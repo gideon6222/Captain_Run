@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+﻿import { test, expect, type Page } from '@playwright/test';
 import { VERSION } from '../src/changelog.js';
 
 /* Smoke tests against the production build.
@@ -216,7 +216,7 @@ test('brutes and punishing gates actually occur in a run', async ({ page }) => {
       CR.S.ascent = a;
       CR.freeze();
       for (let i = 0; i < 130; i++) {
-        CR.advance(0.5);
+        CR.advance(0.5, undefined, false);
         for (const e of CR.enemies()) {
           if (e.boss || ids.has(e)) continue;
           ids.add(e);
@@ -259,7 +259,7 @@ test('the good gate is not always on the same side', async ({ page }) => {
       CR.S.ascent = a;
       CR.freeze();
       for (let i = 0; i < 130; i++) {
-        CR.advance(0.5);
+        CR.advance(0.5, undefined, false);
         for (const g of CR.gates()) {
           if (seen.has(g)) continue;
           seen.add(g);
@@ -282,6 +282,10 @@ test('the build stamp and version are populated', async ({ page }) => {
      pattern test would pass on a screen where nothing was ever populated. */
   await expect(page.locator('#verNum')).toHaveText('v' + VERSION);
   const stamp = await page.locator('#build').innerText();
-  expect(stamp).toMatch(/^build [0-9a-f]{7}\+?\s+·/);
+  /* The separator is a middle dot, written as an escape rather than literally: a
+     PowerShell rewrite of this file re-encoded it to mojibake once, and the
+     broken pattern still looked correct in a diff. */
+  expect(stamp).toMatch(/^build [0-9a-f]{7}\+?\s+\u00B7/);
   expect(stamp, 'an unbuilt stamp means the Vite define pipeline broke').not.toContain('dev');
 });
+

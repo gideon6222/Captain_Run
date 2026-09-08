@@ -10,6 +10,12 @@ export default defineConfig({
   workers: 1,
   /* list for the terminal, html for the artifact CI uploads on failure */
   reporter: [['list'], ['html', { open: 'never' }]],
+  /* Playwright's 30s default is measured on a developer machine. These tests
+     drive thousands of simulated ticks through a software rasteriser, and a
+     two-core CI runner is several times slower - a timeout there says nothing
+     about the game. Long enough to absorb that, short enough that a genuine
+     hang still ends the run. */
+  timeout: 90_000,
   use: {
     baseURL: 'http://localhost:4173',
     /* portrait phone, which is the only shape this game is played in */

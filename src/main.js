@@ -1421,11 +1421,17 @@ function boot() {
          renderer.render() feeds back into game state, so dropping the
          intermediate frames changes no number the harness reads - and drawing
          the last one keeps renderer.info.render.calls and every InstancedMesh
-         count honest afterwards. */
-      advance: (secs, step) => {
+         count honest afterwards.
+
+         Pass draw = false when polling in a loop. A test that samples the road
+         every half second over four ascents makes a thousand advance() calls,
+         and one rendered frame each is a thousand software-rasterised frames
+         for nothing - twelve seconds locally and past the test timeout on a
+         two-core CI runner. */
+      advance: (secs, step, draw = true) => {
         const d = step || 0.016;
         const n = Math.max(1, Math.round(secs / d));
-        for (let i = 0; i < n; i++) tick(d, i === n - 1);
+        for (let i = 0; i < n; i++) tick(d, draw && i === n - 1);
       },
       state: () => ({ z: run.z, crew: run.crew, gold: Math.floor(run.gold), iron: Math.floor(run.iron),
         tier: weaponTier(), dps: Math.floor(squadDPS()), enemies: enemies.length, crates: crates.length,

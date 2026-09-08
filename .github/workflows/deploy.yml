@@ -91,7 +91,15 @@ jobs:
           set -o pipefail
           npm run e2e 2>&1 | tee e2e-output.txt
 
-      - name: Put the failure in the job summary
+      # Two copies, because neither is reliably reachable on its own.
+      #
+      # The job summary is the readable one but is not served to anonymous
+      # viewers or through the check-runs API, so it is useless from outside.
+      # A ::error:: workflow command becomes an annotation, and annotations ARE
+      # public and readable over the API - which is how a Claude Code session
+      # or anyone without push access finds out why a run went red. Newlines
+      # have to be percent-encoded or the command ends at the first one.
+      - name: Put the failure in the job summary and an annotation
         if: failure()
         run: |
           {
@@ -101,6 +109,9 @@ jobs:
             tail -c 60000 e2e-output.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          tail -c 8000 e2e-output.txt \
+            | sed -e 's/%/%25/g' -e 's/\r/%0D/g' \
+            | awk 'BEGIN{printf "::error title=Smoke test failure::"} {printf "%s%%0A", $0} END{print ""}'
 
       - name: Upload Playwright report on failure
         if: failure()
