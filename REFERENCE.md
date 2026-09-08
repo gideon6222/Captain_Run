@@ -28,9 +28,20 @@ on. The listing survives on APK mirrors.
   play-lh.googleusercontent.com/LJUbVPNZZ6-604BsfC6jzyUs-vNk9iZ4UuUfAPLvbXMip4UzMGZhONzxmp2zHhklEg
   play-lh.googleusercontent.com/YupBWFtP1M9UHhTdwSmpvxH58pAHWuvQBaaBrUUCn8gIV3PRh-mfImPbCYR-YkOxKto
   ```
-- **Gameplay video** — `youtube.com/shorts/Zjr68UJqeTM` (@mimii_gaming), sent by Gideon. This
-  is the single best source: it shows a whole run including the stations, the obstacles and
-  the end-of-run shops.
+- **Gameplay videos.** These are the best source by a distance - the store screenshots show
+  the runway and almost none of the UI.
+  - `youtube.com/shorts/Zjr68UJqeTM` (@mimii_gaming), sent by Gideon. One run.
+  - `youtube.com/watch?v=jXw01JHvA2s` — **"Gameplay Walkthrough Part 1 Level 1-6", 4m27s.**
+    The important one: six whole levels, so it shows every between-level screen. Everything
+    in "The screens" below came from it.
+  - `youtube.com/watch?v=K5gi_OgYHH0` was a third; it is gone as of 2026-09-08. Expect the
+    rest to go the same way - which is what this file is for.
+- **How to read a frame.** Seek with the player API (`document.querySelector('#movie_player')
+  .seekTo(t, true)`, then `pauseVideo()`); setting `video.currentTime` directly does nothing,
+  the player puts it back and every frame you grab is the same one. Then `drawImage` the
+  video into a canvas laid over the page and screenshot that. The canvas is tainted by the
+  cross-origin video, which does not matter: it still *renders*, and rendering is all this
+  needs. A contact sheet of six frames per screenshot covers a 4-minute video in eight steps.
 - **Gamezebo strategy guide** — the only written source with real mechanics in it.
 
 ## What the player controls
@@ -103,6 +114,58 @@ to hold.
    - **LUXURY SHOP — $?,000** (partially visible)
    Each has a green **+** button. These are the "extra stations like the boutique" that a
    store review mentions — **progression is buying new shops/stations, not stat upgrades.**
+
+## The screens
+
+All observed in the walkthrough video. **The reference has no upgrade sheet** — no list of
+stats with buy buttons anywhere in six levels. What ours calls "the workshop" does not exist.
+
+### Between runs (the home screen)
+
+The game world is live behind it, and the run starts when you swipe.
+
+- **Top left:** a white rounded-square button with a **grey gear** → settings.
+- **Top centre:** a **`Level N`** pill, gold with a dark outline.
+- **Top right:** a **money pill**, green with a coin icon: `540 $`.
+- **Right edge, mid-height:** a **`SHOP`** button — a yellow rounded square with a shop-awning
+  icon and the word under it.
+- **Centre, two cards side by side:**
+  - **`CANDLE`** — pink card, gold candle icon, caption **`EXTRA +1`**
+  - **`CASH`** — green card, banknote icon, caption **`BONUS x1.0`**
+
+  Each shows either **`▶ FREE`** (rewarded video) or a price — **`500`** with a coin icon.
+  They are per-run boosts bought before the run, not permanent upgrades.
+- **Below the cards:** a yellow **double-headed horizontal arrow** with a hand cursor. The
+  swipe hint, and the only tutorial in the game.
+
+### During a run
+
+The HUD is **three things**: the gear, the `Level N` pill and the money pill. That is all.
+No candle counter, no running value, no colour chips, no progress bar. Value arrives as
+floating green **`+143$`** / **`+72$`** text, and money as green price tags lying on the track.
+
+### End of a run
+
+1. The finished candles stand on a **round pale podium**.
+2. Beside it stands a tall **numeric ruler in absolute money** — `…1040, 1060, 1080, 1100,
+   1120, 1140…` — not a fraction of a target and not a star rating.
+3. The candles convert into a **stack that rises up the ruler**, so the bar *is* the product.
+4. A **yellow `HIGH SCORE` band** crosses the ruler at the previous best, with a tab on the
+   left. Beating it is the goal of a level.
+5. A small green marker rides the top of the stack with the live figure: `1083`.
+
+### The reward screen
+
+A full-screen **magenta** modal:
+
+- Coin icon and the amount at the top: `540`.
+- **`NEW HIGH SCORE!`** when it was beaten.
+- The finished product drawn large in silhouette with a white outline.
+- A percentage: `%20`, `%50`, `%100`, `%25`.
+- A **semicircular multiplier fan** — `x2 x3 x5 x3 x2`, green/blue/purple/blue/green — with a
+  gold needle resting in one wedge.
+- The bottom button is either **`▶ CLAIM 2700`** (rewarded video, = amount × the wedge) or
+  **`TAKE 582`** (the plain amount).
 
 ## Art direction
 

@@ -8,9 +8,22 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '4.2.0';
+export const VERSION = '5.0.0';
 
 export const CHANGELOG = [
+  {
+    version: '5.0.0', date: '2026-09-08', title: 'The screens, from the video',
+    notes: [
+      'Six levels of the real game were watched frame by frame, and every screen here is rebuilt from what it actually does.',
+      'The HUD is three things now \u2014 a settings gear, the level, and your money. The candle counter, the running value, the colour chips and the progress bar are gone; the real game has none of them.',
+      'Between runs you sit on the runway itself, with a SHOP button and two boost cards: CANDLE for extra candles, CASH for a bigger payout. Swipe to begin.',
+      'The end of a run is a money ruler with your own best marked on it in yellow, and the batch climbs it. Beat your best.',
+      'Then a reward screen: what you earned, whether it was a new high score, the candle you made, and a multiplier fan to claim.',
+      'Stars are gone. The goal is your own high score, which is what the real game asks.',
+      'The shop sells SHOPS \u2014 Online, Scent, Boutique, Luxury \u2014 and nothing else. Bigger Batch, Steady Tray, Long Reach, Deeper Vats and the Glitter Cannon were invented for this build and appear nowhere in the real one.',
+      'Barriers are red X X X walls of spikes now, not flat panels.'
+    ]
+  },
   {
     version: '4.2.0', date: '2026-09-08', title: 'Pause',
     notes: [

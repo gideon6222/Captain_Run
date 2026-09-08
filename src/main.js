@@ -188,9 +188,14 @@ const W = {
      3. The sweeper - a thin salmon bar lying diagonally, with a big dark navy
         arrowhead at its outer end showing which way it is going and a couple
         of short dashes trailing behind it. The one that moves. */
-  barrier:  new Layer(box(1.9, 1.12, 0.28), 0xf04a3c, 24, 0.055),
-  barRim:   new Layer(box(2.04, 1.26, 0.18), 0xcf3020, 24, 0),
-  barX:     new Layer(box(1.02, 0.15, 0.10), 0xffffff, 60, 0),
+  /* The hazard wall is a ROW OF PYRAMIDS on a low base, not a flat panel. Seen
+     close in the store screenshots it is a stack of square panels each with a
+     four-sided pyramid pushed out of it; seen at speed in the video it is a
+     zigzag red wall with white crosses on it. A flat slab with an X was the
+     third thing this build guessed at and the second it got wrong. */
+  barrier:  new Layer(box(2.0, 0.52, 0.42), 0xf04a3c, 24, 0.055),
+  barSpike: new Layer(new THREE.ConeGeometry(0.46, 0.78, 4), 0xf4665a, 72, 0.050),
+  barX:     new Layer(box(0.62, 0.13, 0.09), 0xffffff, 96, 0),
   /* The diamonds OVERLAP along the axle - spaced 0.92 against a 0.74 radius -
      because a row of separated diamonds reads as beads on a string and a row
      that interlocks reads as one spiked drum, which is the thing in the
@@ -542,7 +547,6 @@ const run = {
 };
 const count = () => run.tray.length;
 let lastResult = null;
-let hintTimer = 0;
 let stationSeq = 0;
 
 /* Every random draw that can change the outcome comes from here, not
@@ -559,7 +563,11 @@ const BENCH_Z = T.levelChunks * T.chunk + 16;
 
 function startLevel() {
   rnd = makeRng(1000 + S.level);
-  run.active = true; run.over = false; run.gift = false;
+  /* A level is BUILT here and STARTED by the first swipe. The reference sits on
+     its home screen with the runway live behind it - the shop button, the two
+     boost cards and the swipe arrow are over a world that is already there -
+     and the run begins the moment you touch the screen. */
+  run.active = false; run.over = false; run.gift = false;
   run.z = 0; run.x = 0; run.targetX = 0; run.time = 0;
   run.tray = TR.newTray(startCandles());
   ST.seedTrail(run.trail, 0, 0);
@@ -576,13 +584,27 @@ function startLevel() {
   for (const g of glit) g.live = false;
   giftLight.intensity = 0;
   applyWorkshop(WORKSHOPS[run.workshop]);
-  hintTimer = S.seenShop ? 0 : 4.0;
-  hintEl.style.opacity = hintTimer > 0 ? '0.95' : '0';
   shopScreenEl.classList.add('hidden');
-  resultEl.classList.add('hidden');
+  rewardEl.classList.add('hidden');
+  rulerEl.classList.add('hidden');
   toast(WORKSHOPS[run.workshop].name, 1.4);
   lastHud = {};
   syncHUD();
+  openHome();
+}
+
+/* The home screen: not a sheet over a frozen game, a layer over a live one. */
+function openHome() {
+  homeEl.classList.remove('hidden');
+  renderBoosts();
+  syncPauseBtn();
+}
+function startRun() {
+  if (run.active || run.over) return;
+  homeEl.classList.add('hidden');
+  run.active = true;
+  last = performance.now();
+  applyBoosts();
   syncPauseBtn();
 }
 
@@ -877,50 +899,25 @@ const sfx = createSfx({ isStruggling: () => run.active && count() <= 2 });
 // HUD
 // ─────────────────────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
-const hudCoins = $('coins'), hudCount = $('countN'), hudCash = $('cashN'), hudEach = $('eachN');
-const stackEl = $('stack');
-const progFill = $('prog').firstElementChild;
-const levelEl = $('level'), toastEl = $('toast'), hintEl = $('hint');
+const hudCoins = $('coins');
+const levelEl = $('level'), toastEl = $('toast');
 const shopScreenEl = $('shopScreen'), shopEl = $('shop'), flashEl = $('flash');
-const resultEl = $('result');
+const homeEl = $('home'), rulerEl = $('ruler'), rewardEl = $('reward');
 
 let toastT = 0;
 function toast(msg, dur) { toastEl.textContent = msg; toastEl.style.opacity = '1'; toastT = dur || 1.1; }
 
 let lastHud = {};
+/* THREE THINGS. The reference's HUD is the settings gear, the level and the
+   money, and nothing else - no candle count, no running value, no colour chips,
+   no progress bar. Every one of those was ours, and together they were most of
+   why a screenshot of this game did not look like a screenshot of that one.
+
+   What it uses instead is the floating green +N$ over the tray, which is
+   `pop()` and already here. */
 function syncHUD() {
-  const n = count();
-  if (lastHud.n !== n) { hudCount.textContent = n; lastHud.n = n; }
   if (lastHud.c !== S.coins) { hudCoins.textContent = fmt(S.coins); lastHud.c = S.coins; }
-  if (lastHud.l !== S.level) { levelEl.innerHTML = S.level + '<small>LEVEL</small>'; lastHud.l = S.level; }
-  const cash = Math.floor(run.cash);
-  if (lastHud.k !== cash) { hudCash.textContent = '$' + fmt(cash); lastHud.k = cash; }
-
-  /* What the tray is worth right now, not what one candle is worth.
-
-     With per-candle recipes there is no single "each" any more - half the tray
-     can be twice the other half - so the running readout is the total, which
-     is the number the player is actually growing. */
-  const worth = Math.round(TR.trayValue(run.tray) * priceMul() * earnMul());
-  if (lastHud.e !== worth) { hudEach.textContent = '$' + fmt(worth); lastHud.e = worth; }
-
-  /* The colour chips are the tray's palette: one chip per wax that any candle
-     is wearing, its height showing how much of the tray carries it. That is
-     the readout that makes weaving legible - dunk half the tray in aqua and
-     half in pink and you get two half-height chips, not one. */
-  const pal = TR.statsOf(run.tray, WAXES.length).palette;
-  const sig = pal.join(',');
-  if (lastHud.s !== sig) {
-    let html = '';
-    for (let i = pal.length - 1; i >= 0; i--) {
-      if (!pal[i]) continue;
-      const h = clamp(4 + (pal[i] / Math.max(1, n)) * 14, 4, 18);
-      html += `<i style="background:#${WAXES[i].col.toString(16).padStart(6, '0')};height:${h.toFixed(0)}px"></i>`;
-    }
-    stackEl.innerHTML = html;
-    lastHud.s = sig;
-  }
-  progFill.style.width = clamp(run.z / BENCH_Z, 0, 1) * 100 + '%';
+  if (lastHud.l !== S.level) { levelEl.textContent = 'Level ' + S.level; lastHud.l = S.level; }
 }
 
 // floating numbers
@@ -954,18 +951,60 @@ const popAt = (text, color, z) => pop(text, color, run.x, 2.9, z);
    same shape. THE SCENT SHOP is the important one, because it buys a whole new
    station rather than a number, which is what "extra stations like the
    boutique" means in that game's reviews. */
-const UPGRADES = [
-  { g: 'THE LINE', id: 'stack', ic: '🕯️', name: () => 'Bigger Batch',
-    eff: () => 'Start every level with ' + (startCandles() + 2) + ' candles',
-    cost: () => Math.round(90 * Math.pow(1.95, S.up.stack)), max: 10, unlock: 1 },
-  { g: 'THE LINE', id: 'grip', ic: '🛡️', name: () => 'Steady Tray',
-    eff: () => 'A barrier takes ' + TU.obstacleTake(T.barrierTake, { ...S.up, grip: S.up.grip + 1 }) +
-               ' candles, not ' + takeOf(T.barrierTake),
-    cost: () => Math.round(150 * Math.pow(2.1, S.up.grip)), max: 8, unlock: 1 },
-  { g: 'THE LINE', id: 'reach', ic: '🧲', name: () => 'Long Reach',
-    eff: () => 'Sweep loose candles and money in from further out',
-    cost: () => Math.round(110 * Math.pow(2.0, S.up.reach)), max: 8, unlock: 1 },
+/* THE TWO BOOST CARDS on the home screen, straight off the reference: a pink
+   CANDLE card reading EXTRA +1 and a green CASH card reading BONUS x1.5, each
+   with a coin price. They are bought BEFORE a run and last one run, which is a
+   different thing from an upgrade and the reason the shop is not a stat list.
 
+   The reference offers them free for a rewarded video. There are no ads here,
+   so they cost coins. */
+const BOOSTS = {
+  candle: { n: () => 3 + S.up.earn, cost: () => 300 + S.level * 60 },
+  cash:   { n: () => 1.5,           cost: () => 300 + S.level * 60 },
+};
+let boost = { candle: false, cash: false };
+
+function renderBoosts() {
+  $('boostCandleN').textContent = String(BOOSTS.candle.n());
+  $('boostCashN').textContent = BOOSTS.cash.n().toFixed(1);
+  for (const k of ['candle', 'cash']) {
+    const btn = $('boost' + k[0].toUpperCase() + k.slice(1));
+    const cost = BOOSTS[k].cost();
+    $('boost' + k[0].toUpperCase() + k.slice(1) + 'C').textContent = boost[k] ? 'ON' : fmt(cost);
+    /* Greyed only when already bought, never when merely unaffordable. The
+       reference keeps both cards bright with a price on them; a card that dims
+       the moment you are short reads as broken rather than as expensive. */
+    btn.disabled = boost[k];
+  }
+}
+function buyBoost(k) {
+  if (boost[k]) return;
+  const cost = BOOSTS[k].cost();
+  if (S.coins < cost) { sfx.deny(); return; }
+  S.coins -= cost; boost[k] = true;
+  sfx.buy(); save(); renderBoosts(); syncHUD();
+}
+/* Applied at the moment the run starts, so buying a candle boost visibly adds
+   candles to the slab sitting on the runway in front of you. */
+function applyBoosts() {
+  if (boost.candle) TR.grow(run.tray, BOOSTS.candle.n(), T.maxCandles);
+  syncHUD();
+}
+const boostMul = () => (boost.cash ? BOOSTS.cash.n() : 1);
+
+$('boostCandle').addEventListener('click', () => buyBoost('candle'));
+$('boostCash').addEventListener('click', () => buyBoost('cash'));
+$('btnShop').addEventListener('click', () => openShop());
+
+/* THE SHOP IS SHOPS. Four of them, all named in the reference, all of which add
+   or improve a STATION on the line rather than nudging a stat.
+
+   Bigger Batch, Steady Tray, Long Reach, Deeper Vats and the Glitter Cannon
+   used to live here. None of the five appears anywhere in six levels of
+   footage; they were invented for this build, and a list of stat upgrades is
+   the single most un-reference-like screen the game had. The count axis is now
+   the CANDLE boost card, which is what the reference uses. */
+const UPGRADES = [
   { g: 'THE SHOPS', id: 'earn', ic: '💻', name: () => 'Online Shop',
     eff: () => 'Every sale pays +' + Math.round((S.up.earn + 1) * 14) + '%',
     cost: () => Math.round(1000 * Math.pow(2.1, S.up.earn)), max: 10, unlock: 1 },
@@ -988,18 +1027,9 @@ const UPGRADES = [
       : 'x' + WRAPS[TU.bestWrap({ ...S.up, wrap: S.up.wrap + 1 })].mul.toFixed(2) +
         ' a candle at the wrap station',
     cost: () => Math.round(3500 * Math.pow(3.1, S.up.wrap)), max: TU.MAX_WRAP, unlock: 3 },
-
-  { g: 'THE STATIONS', id: 'vat', ic: '🎨', name: () => 'Deeper Vats',
-    eff: () => 'A wax pool lays ' + TU.vatLayers({ ...S.up, vat: S.up.vat + 1 }) + ' band(s) in one pass',
-    cost: () => Math.round(260 * Math.pow(2.4, S.up.vat)), max: 9, unlock: 2 },
-  { g: 'THE STATIONS', id: 'spark', ic: '✨', name: () => 'Glitter Cannon',
-    eff: () => 'Glitter applies ' + TU.glitterPer({ ...S.up, spark: S.up.spark + 1 }) + ' coat(s)',
-    cost: () => Math.round(240 * Math.pow(2.35, S.up.spark)), max: 9, unlock: 2 },
 ];
 
-function openShop(title, sub) {
-  $('shopTitle').textContent = title;
-  $('shopSub').textContent = sub;
+function openShop() {
   renderShop();
   showBuildInfo();
   shopScreenEl.classList.remove('hidden');
@@ -1008,30 +1038,29 @@ function openShop(title, sub) {
   syncPauseBtn();
 }
 
+/* Drawn as SHOP FRONTS with a green plus, the way the reference draws the
+   panels beside its track, rather than as rows in a stat list. */
 function renderShop() {
   $('sCoins').textContent = fmt(S.coins);
   $('sBest').textContent = fmt(S.bestValue);
-  $('sStars').textContent = fmt(S.stars);
   let html = '';
-  let group = '';
   for (const u of UPGRADES) {
-    if (u.g !== group) { if (group) html += '</div>'; group = u.g; html += `<div class="counter"><h3>${u.g}</h3>`; }
     const lvl = S.up[u.id];
     const locked = S.best < u.unlock;
     const maxed = lvl >= u.max;
     const cost = u.cost();
     const afford = S.coins >= cost && !maxed && !locked;
     let btn;
-    if (locked) btn = `<span class="lockmsg">LEVEL ${u.unlock}</span>`;
-    else if (maxed) btn = `<button class="buy max" disabled>MAX</button>`;
-    else btn = `<button class="buy ${afford ? '' : 'no'}" data-buy="${u.id}">$${fmt(cost)}</button>`;
-    html += `<div class="up ${locked ? 'locked' : ''}">
-      <div class="upic">${u.ic}</div>
-      <div class="upinfo"><div class="upname out">${locked ? '???' : u.name()}</div>
-      <div class="upeff">${locked ? 'Sealed until Level ' + u.unlock : u.eff() + '   ·  Lv ' + lvl + '/' + u.max}</div></div>
-      ${btn}</div>`;
+    if (locked) btn = `<button class="plusbtn no" disabled>LV ${u.unlock}</button>`;
+    else if (maxed) btn = `<button class="plusbtn max" disabled>MAX</button>`;
+    else btn = `<button class="plusbtn ${afford ? '' : 'no'}" data-buy="${u.id}">${fmt(cost)}</button>`;
+    html += `<div class="front ${locked ? 'locked' : ''}">
+      <div class="fic">${u.ic}</div>
+      <div class="fbody">
+        <div class="fname">${locked ? '???' : u.name()}</div>
+        <div class="feff">${locked ? 'Sealed until level ' + u.unlock : u.eff()}</div>
+      </div>${btn}</div>`;
   }
-  html += '</div>';
   shopEl.innerHTML = html;
   shopEl.querySelectorAll('[data-buy]').forEach((b) => {
     b.addEventListener('click', () => buy(b.getAttribute('data-buy')));
@@ -1065,8 +1094,11 @@ function buy(id) {
 let paused = false;
 const pauseScreenEl = $('pauseScreen'), pauseBtn = $('btnPause');
 
+/* The gear is up whenever the player is looking at the world - during a run and
+   on the home screen between them, which is where the reference puts it. It
+   comes down only when a full-screen sheet already owns the input. */
 function canPause() {
-  return run.active && !run.over && shopScreenEl.classList.contains('hidden');
+  return shopScreenEl.classList.contains('hidden') && rewardEl.classList.contains('hidden');
 }
 
 function openPause() {
@@ -1075,6 +1107,7 @@ function openPause() {
   disarmWipe();
   syncSettingsUI();
   $('pauseSub').textContent = `LEVEL ${S.level}  ·  ${count()} CANDLES`;
+  homeEl.classList.add('hidden');
   pauseScreenEl.classList.remove('hidden');
   save();
 }
@@ -1084,6 +1117,7 @@ function closePause() {
   paused = false;
   disarmWipe();
   pauseScreenEl.classList.add('hidden');
+  if (!run.active && !run.over) openHome();
   /* The clock has been running while the panel was open; without this the
      first frame after RESUME is one long step and the tray teleports. */
   last = performance.now();
@@ -1180,7 +1214,8 @@ applySettings();
 $('btnGo').addEventListener('click', () => {
   sfx.init();
   shopScreenEl.classList.add('hidden');
-  startLevel();
+  renderBoosts();
+  syncPauseBtn();
 });
 
 let notesBuilt = false;
@@ -1215,69 +1250,118 @@ function finishLevel() {
   run.active = false; run.over = true; run.gift = true; run.giftT = 0;
   syncPauseBtn();
   const a = appraise(run.tray, {
-    cash: run.cash, earnMul: earnMul(), priceMul: priceMul(),
+    cash: run.cash, earnMul: earnMul() * boostMul(), priceMul: priceMul(),
   });
   lastResult = a;
-  S.coins += a.value;
-  S.bestValue = Math.max(S.bestValue, a.value);
-  S.stars += a.stars;
-  S.level++;
-  S.best = Math.max(S.best, S.level);
-  save();
-  sfx.sell(a.stars > 0);
+  sfx.sell(a.value > S.bestValue);
   confetti(run.z + 4, 170);
   flash(0.4);
 
-  setTimeout(() => {
-    renderResult(a);
-    openShop('THE WORKSHOP', `LEVEL ${S.level - 1} DELIVERED`);
-  }, 2600);
+  showRuler(a);
+  setTimeout(() => showReward(a), 2900);
 }
 
-/* The results panel reports the TRAY, because there is no longer one recipe to
-   describe. Averages and counts, so a player who wove well can see that in
-   "3.4 colours each" and "24 of 27 wrapped" rather than being told a single
-   multiplier that was never true of every candle. */
-function renderResult(a) {
-  const st = a.stats;
-  const rows = [
-    ['CANDLES', st.count + ' delivered', '$' + fmt(Math.round(a.each)) + ' avg'],
-    ['COLOURS', st.avgColours.toFixed(1) + ' per candle', ''],
-    ['GLITTER', st.avgGlitter.toFixed(1) + ' coats each', ''],
-    ['MOLDED', st.pressed + ' of ' + st.count, ''],
-    ['WRAPPED', st.wrapped + ' of ' + st.count, ''],
-  ];
-  if (st.scented > 0) rows.push(['SCENTED', st.scented + ' of ' + st.count, '']);
-  if (st.plain > 0) rows.push(['UNTOUCHED', st.plain + ' plain candle' + (st.plain === 1 ? '' : 's'), '']);
-  if (a.cash > 0) rows.push(['PICKED UP', 'banknotes', '$' + fmt(Math.round(a.cash))]);
-  /* The gauge, which is the reference's end-of-run moment: a numeric scale
-     with the run's value rising up it. Calibrated on `par` so the ticks mean
-     the same thing at every level - the same tray always fills it the same
-     amount, however much money that level happens to pay. */
-  const target = T.par * priceMul();
-  const full = target * T.gaugeMax;
-  const frac = clamp(a.value / full, 0, 1);
-  const ticks = [];
-  for (let i = 1; i <= T.gaugeTicks; i++) {
-    const f = i / (T.gaugeTicks + 1);
-    ticks.push(`<i style="bottom:${(f * 100).toFixed(1)}%">${fmt(Math.round(full * f))}</i>`);
-  }
-  $('gaugeTicks').innerHTML = ticks.join('');
-  /* Set from zero on the next frame so the bar animates up rather than
-     appearing already full. */
-  $('gaugeFill').style.height = '0%';
-  $('gaugeMark').style.bottom = '0%';
-  setTimeout(() => {
-    $('gaugeFill').style.height = (frac * 100).toFixed(1) + '%';
-    $('gaugeMark').style.bottom = (frac * 100).toFixed(1) + '%';
-  }, 60);
+/* THE RULER. An absolute money scale with your own best marked on it, which the
+   finished batch climbs - not a fraction of a target and not a star rating.
 
-  $('rStars').innerHTML = [0, 1, 2].map((i) => `<i class="${i < a.stars ? 'on' : ''}">★</i>`).join('');
-  $('rRows').innerHTML = rows.map((x) =>
-    `<div class="rrow"><span class="rk">${x[0]}</span><span class="rd">${x[1]}</span><span class="rv">${x[2]}</span></div>`
-  ).join('');
-  $('rTotal').textContent = '$' + fmt(a.value);
-  resultEl.classList.remove('hidden');
+   That is the reference's whole end-of-run question, and it is a better one:
+   "did you beat your best" needs no explaining, moves every level, and cannot
+   be gamed by a designer picking a soft par. `par` survives only as the scale's
+   spacing, because a ruler still needs to know how big a step is. */
+function showRuler(a) {
+  const best = S.bestValue;
+  /* Headroom above whichever is higher. Without the floor the very first run -
+     which has no best to sit under - fills the column to the brim and the scale
+     it is being measured against is entirely hidden behind it. */
+  const top = Math.max(a.value * 1.45, best * 1.3, T.par * priceMul() * 0.9);
+  const stepRaw = top / 9;
+  const mag = Math.pow(10, Math.floor(Math.log10(Math.max(1, stepRaw))));
+  const step = Math.max(mag, Math.round(stepRaw / mag) * mag);
+  const pos = (v) => clamp(v / top, 0, 1) * 100;
+
+  let ticks = '';
+  for (let v = step; v <= top; v += step) {
+    ticks += `<i style="bottom:${pos(v).toFixed(2)}%">${fmt(Math.round(v))}</i>`;
+  }
+  $('rulerTicks').innerHTML = ticks;
+
+  const band = $('hsBand');
+  band.style.display = best > 0 ? '' : 'none';
+  band.style.bottom = pos(best).toFixed(2) + '%';
+
+  const stack = $('rStack');
+  stack.style.height = '0%';
+  $('rStackN').textContent = '0';
+  rulerEl.classList.remove('hidden');
+
+  /* Counted up rather than snapped, because the moment is watching it climb
+     past the yellow band. */
+  setTimeout(() => { stack.style.height = pos(a.value).toFixed(2) + '%'; }, 80);
+  const t0 = performance.now();
+  const tick = () => {
+    const k = clamp((performance.now() - t0) / 1500, 0, 1);
+    $('rStackN').textContent = fmt(Math.round(a.value * (1 - Math.pow(1 - k, 3))));
+    if (k < 1 && !rulerEl.classList.contains('hidden')) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/* THE REWARD SCREEN, and the multiplier fan on it.
+
+   The reference gates the fan behind a rewarded video and offers a plain TAKE
+   beside it. There are no ads here, so the wedge is decided by the run itself:
+   the needle lands further round the better the batch did against your best.
+   Same shape, same read, and it rewards the thing the game is about instead of
+   rewarding watching an advert. */
+const FAN = [2, 3, 5, 3, 2];
+function showReward(a) {
+  const beat = a.value > S.bestValue;
+  /* Where the needle lands: the middle wedge is x5 and you only reach it by
+     beating your best by half again. */
+  const ratio = S.bestValue > 0 ? a.value / S.bestValue : 1;
+  const wedge = ratio >= 1.5 ? 2 : ratio >= 1.15 ? (beat ? 1 : 3) : ratio >= 0.8 ? (beat ? 3 : 0) : 4;
+  const mul = FAN[wedge];
+
+  $('rwdAmt').textContent = fmt(Math.round(a.value));
+  $('rwdHs').classList.toggle('hidden', !beat);
+  /* The product: the best candle in the batch, drawn the way the reference
+     draws it - one big silhouette with a white outline. */
+  /* `TR.bestCandle` returns a VALUE, not a recipe - reading `.layers` off it
+     threw on the first reward screen. The recipe has to be picked here. */
+  let b = null, bv = -1;
+  for (const r of run.tray) {
+    const v = CD.candleValue(r);
+    if (v > bv) { bv = v; b = r; }
+  }
+  const col = b ? WAXES[CD.topWax(b)].col : 0xfff0d0;
+  const tall = clamp(60 + (b ? b.layers.length : 1) * 16, 60, 165);
+  $('rwdProd').innerHTML =
+    `<i style="height:${tall}px;background:#${col.toString(16).padStart(6, '0')}"></i>`;
+  $('rwdPct').textContent = '%' + Math.round(clamp(ratio, 0, 9.99) * 100);
+
+  $('fanNeedle').style.transform = 'rotate(0deg)';
+  rewardEl.classList.remove('hidden');
+  /* -72deg to +72deg across five wedges, 36 apart. */
+  setTimeout(() => {
+    $('fanNeedle').style.transform = `rotate(${(wedge - 2) * 36}deg)`;
+  }, 260);
+
+  const paid = Math.round(a.value * mul);
+  $('claimLbl').textContent = (mul > 1 ? 'CLAIM x' + mul + '  ' : 'TAKE ') + fmt(paid);
+  $('btnClaim').onclick = () => takeReward(a, paid);
+}
+
+function takeReward(a, paid) {
+  rewardEl.classList.add('hidden');
+  rulerEl.classList.add('hidden');
+  S.coins += paid;
+  S.bestValue = Math.max(S.bestValue, a.value);
+  S.level++;
+  S.best = Math.max(S.best, S.level);
+  boost.candle = false; boost.cash = false;
+  save();
+  sfx.buy();
+  startLevel();
 }
 
 function flash(a) {
@@ -1305,10 +1389,13 @@ function ptDown(e) {
      refuses to build an AudioContext outside one. */
   sfx.init();
   if (onUI(e)) { dragId = null; return; }
+  /* A touch on the world is what starts a run. The home screen is a layer over
+     a live world, not a sheet in front of a frozen one, so there is no START
+     button to find - the first swipe both begins the level and steers it. */
+  if (!run.active && !run.over) startRun();
   const t = e.changedTouches ? e.changedTouches[0] : e;
   dragId = t.identifier !== undefined ? t.identifier : 'mouse';
   dragX = t.clientX; dragStartX = run.targetX;
-  if (hintTimer > 0) hintTimer = 0.01;
 }
 function ptMove(e) {
   if (dragId === null || onUI(e)) return;
@@ -1791,17 +1878,21 @@ function writeWorld() {
   for (const o of obstacles) {
     if (o.hit) continue;
     if (o.kind === 'barrier') {
-      /* Rim first, set a hair behind the face, so the panel reads as a framed
-         sign rather than a slab - which is the single detail that separates
-         the reference's barrier from a red box. */
-      M2.compose(V2.set(o.x, 0.68, o.z + 0.06), QT.identity(), ONE);
-      W.barRim.push(M2);
-      M2.compose(V2.set(o.x, 0.68, o.z), QT.identity(), ONE);
+      // the low base
+      M2.compose(V2.set(o.x, 0.26, o.z), QT.identity(), ONE);
       W.barrier.push(M2);
-      for (let k = 0; k < 2; k++) {
-        QT.setFromAxisAngle(V.set(0, 0, 1), k ? 0.86 : -0.86);
-        M2.compose(V2.set(o.x, 0.68, o.z - 0.16), QT, ONE);
-        W.barX.push(M2);
+      /* Three pyramids across it, and a white cross on each: the crosses are
+         what makes it read as "do not" rather than as scenery, and they are on
+         the pyramids in the reference rather than on the base. */
+      for (let i = -1; i <= 1; i++) {
+        const px = o.x + i * 0.62;
+        M2.compose(V2.set(px, 0.86, o.z), QT.identity(), ONE);
+        W.barSpike.push(M2);
+        for (let k = 0; k < 2; k++) {
+          QT.setFromAxisAngle(V.set(0, 0, 1), k ? 0.86 : -0.86);
+          M2.compose(V2.set(px, 0.80, o.z - 0.30), QT, ONE);
+          W.barX.push(M2);
+        }
       }
     } else if (o.kind === 'roller') {
       // the post, standing outside the rail on the anchored side
@@ -2009,7 +2100,6 @@ function tick(dt, draw = true) {
   updatePops(dt);
 
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.style.opacity = '0'; }
-  if (hintTimer > 0) { hintTimer -= dt; if (hintTimer <= 0) hintEl.style.opacity = '0'; }
   syncHUD();
 
   if (draw) renderer.render(scene, camera);
@@ -2033,7 +2123,17 @@ function boot() {
          of the test runner's mood. freeze() stops the rAF tick and restarts the
          level, so advance(n) is exactly n seconds from a clean start on any
          machine. */
-      freeze: () => { harnessFrozen = true; startLevel(); },
+      /* Starts the run as well as building the level. A level now waits for a
+         swipe, and a harness has no thumb - without this every advance() in
+         every test would tick a stationary game and every number would be the
+         opening tray. */
+      freeze: () => { harnessFrozen = true; startLevel(); startRun(); },
+      startRun,
+      /* Back to the between-run state, which is where the SHOP button lives.
+         `freeze()` deliberately starts the run - a harness has no thumb - and
+         that hides the home screen, so a test that wants the shop needs a way
+         back to it. */
+      toHome: () => { startLevel(); },
 
       /* Only the last frame of a run is drawn. Measured on this stack: a tick
          costs 0.28 ms with a real GPU and ~17 ms on the software rasteriser a
@@ -2081,11 +2181,8 @@ function boot() {
       three: THREE, scene, camera, renderer, C, W, flames, giftLight, OUTLINE_MAT,
     };
   }
-  if (S.seenShop) {
-    run.active = false;
-    resultEl.classList.add('hidden');
-    openShop('THE WORKSHOP', `LEVEL ${S.level}  ·  BEST $${fmt(S.bestValue)}`);
-  }
+  /* No sheet on boot. `startLevel()` has already put the home screen up over a
+     live runway, which is where the reference sits between runs. */
   requestAnimationFrame(frame);
 }
 boot();

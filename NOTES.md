@@ -217,6 +217,26 @@ Asked for directly: a pause button that reaches settings and can clear the save.
 - Clearing takes two taps, and arming times out after four seconds so a stray tap cannot
   leave a live trigger under a thumb.
 
+## The screens pass (v5.0.0)
+
+Gideon, after v4.2.0: *"still doesn't look or feel right ... make the mechanics, upgrades,
+traps, menus, upgrade screen and everything as similar as possible, and remove old mechanics
+and traps that aren't accurate."*
+
+The research that unlocked it was a second walkthrough video — six whole levels, so it shows
+every between-level screen, where the store screenshots show almost no UI at all. Method is in
+`REFERENCE.md`: seek with the player API, draw the frame into a canvas over the page,
+screenshot a contact sheet of six.
+
+**The finding that mattered: the reference has no upgrade screen.** Six levels, no list of
+stats with buy buttons anywhere. Its progression is shop fronts beside the track and two
+per-run boost cards on the home screen. Ours had nine stat upgrades on a sheet that opened
+after every level, and that sheet was the least reference-like thing in the game.
+
+Removed outright: the candle counter, the running value readout, the colour-chip stack, the
+progress bar, the star rating, the itemised results card, the between-level workshop sheet,
+and five invented stat upgrades. About 3.8 KB of CSS went with them.
+
 ## Known gaps / next
 
 1. **The upgrade list is still ours, not the reference's.** He asked for "same traps and

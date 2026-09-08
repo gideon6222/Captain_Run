@@ -86,7 +86,6 @@
     background:var(--paper); border:3px solid var(--edge); border-radius:14px;
     box-shadow:0 4px 0 var(--edge); padding:5px 11px; color:var(--ink);
   }
-  .tleft{display:flex; align-items:flex-start; gap:7px;}
   /* The HUD does not take pointer events, so a control in it must ask. */
   .uibtn{
     pointer-events:auto; font-family:inherit; font-weight:800; cursor:pointer;
@@ -98,42 +97,129 @@
   #level{font-size:16px; letter-spacing:.04em; line-height:1.05; text-align:center;}
   #level small{display:block; font-size:8.5px; color:#9a6ab0; letter-spacing:.16em;}
 
+  /* The money pill: green, a coin, and the amount followed by a dollar sign -
+     "540 $", the way the reference writes it. */
   .money{
-    background:linear-gradient(#4fe07d,#25a854); border:3px solid var(--edge); border-radius:14px;
-    box-shadow:0 4px 0 var(--edge); padding:5px 12px; font-size:16px; color:#fff;
+    display:flex; align-items:center; gap:6px;
+    background:linear-gradient(#4fe07d,#25a854); border:3px solid var(--edge); border-radius:16px;
+    box-shadow:0 4px 0 var(--edge); padding:6px 13px; font-size:16px; color:#fff;
+  }
+  .coin{
+    display:inline-block; width:14px; height:14px; border-radius:50%;
+    background:linear-gradient(#ffe06a,#e8a917); border:2px solid var(--edge); flex:none;
+  }
+  /* The level pill is gold and reads "Level 4", not a big number over a caption. */
+  .lvlpill{
+    background:linear-gradient(#ffd85e,#f0a81c); border:3px solid var(--edge); border-radius:16px;
+    box-shadow:0 4px 0 var(--edge); padding:7px 16px; font-size:15px; color:#fff;
+    letter-spacing:.04em;
+  }
+  .iconbtn{
+    pointer-events:auto; cursor:pointer; width:42px; height:42px; padding:0;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--paper); border:3px solid var(--edge); border-radius:14px;
+    box-shadow:0 4px 0 var(--edge);
+  }
+  .iconbtn svg{width:22px; height:22px; fill:#7a6a8c;}
+  .iconbtn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
+  .iconbtn.hidden{display:none;}
+
+  /* the home screen */
+  #home{position:fixed; inset:0; z-index:15; pointer-events:none;}
+  #home.hidden{display:none;}
+  .shopbtn{
+    position:absolute; right:10px; top:44%; width:62px; padding:8px 0 6px;
+    display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer;
+    background:linear-gradient(#ffd85e,#f0a81c); border:3px solid var(--edge); border-radius:16px;
+    box-shadow:0 5px 0 var(--edge); font-family:inherit; font-weight:800;
+    font-size:10px; letter-spacing:.1em; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,.28);
+  }
+  .shopbtn svg{width:26px; height:26px; fill:#fff;}
+  .shopbtn:active{transform:translateY(4px); box-shadow:0 1px 0 var(--edge);}
+
+  .boosts{
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-b) + 108px);
+    display:flex; justify-content:center; gap:14px; pointer-events:none;
+  }
+  .boost{
+    pointer-events:auto; cursor:pointer; width:118px; padding:9px 8px 10px;
+    border:4px solid var(--edge); border-radius:18px; box-shadow:0 6px 0 var(--edge);
+    font-family:inherit; font-weight:800; color:#fff; text-align:center;
+    text-shadow:0 2px 0 rgba(0,0,0,.28);
+  }
+  .boost.candle{background:linear-gradient(#ffa8d8,#f06ab4);}
+  .boost.cash{background:linear-gradient(#7fe6a0,#25a854);}
+  .boost:active{transform:translateY(4px); box-shadow:0 2px 0 var(--edge);}
+  .boost[disabled]{filter:grayscale(.55) brightness(.9);}
+  .btitle{font-size:14px; letter-spacing:.08em;}
+  .bic{font-size:30px; line-height:1.15; text-shadow:none;}
+  .bsub{
+    font-size:10.5px; letter-spacing:.06em; background:rgba(255,255,255,.85); color:#5b3a70;
+    border-radius:8px; padding:3px 0; margin:3px 0 5px; text-shadow:none;
+  }
+  .bcost{
+    display:flex; align-items:center; justify-content:center; gap:5px; font-size:13px;
+    background:rgba(0,0,0,.18); border-radius:9px; padding:3px 0;
   }
 
-  #bars{margin:9px auto 0; width:min(94%,400px);}
-  #prog{
-    position:relative; height:13px; border:3px solid var(--edge); border-radius:9px;
-    background:rgba(255,255,255,.55); overflow:hidden; box-shadow:0 3px 0 var(--edge);
+  /* The swipe hint: a double-headed arrow with a hand, which is the reference's
+     entire tutorial. */
+  .swipehint{
+    position:absolute; left:0; right:0; bottom:calc(var(--safe-b) + 52px);
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    color:#ffd85e; font-size:26px; text-shadow:0 3px 0 var(--edge);
+    animation:swipe 1.8s ease-in-out infinite;
   }
-  #prog i{position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(#ff8ec0,#e8226e);}
+  .swipehint em{font-style:normal; font-size:28px;}
+  @keyframes swipe{0%,100%{transform:translateX(-14px)} 50%{transform:translateX(14px)}}
 
-  /* candle count, left — the thing obstacles take */
-  #countBox{position:fixed; left:12px; top:calc(var(--safe-t) + 108px); text-align:center;}
-  #countN{font-size:42px; line-height:.95; font-weight:700;}
-  #countBox small{font-size:9px; letter-spacing:.16em; display:block; color:#fff; text-shadow:0 2px 0 var(--edge);}
-
-  /* per-candle value + cash, right */
-  #valBox{position:fixed; right:12px; top:calc(var(--safe-t) + 104px); text-align:right;}
-  #valBox .lbl{font-size:8.5px; letter-spacing:.14em; color:#fff; text-shadow:0 1px 0 var(--edge);}
-  #eachN{font-size:22px; line-height:1.05;}
-  #cashN{font-size:15px; line-height:1.4; color:#b6ffcf;}
-
-  /* the band stack, mirroring the candles */
-  #stackBox{position:fixed; right:12px; top:calc(var(--safe-t) + 186px); width:44px; text-align:center;}
-  #stackBox small{font-size:8px; letter-spacing:.12em; color:#fff; text-shadow:0 1px 0 var(--edge); display:block; margin-bottom:4px;}
-  #stack{display:flex; flex-direction:column; align-items:center; gap:2px;}
-  #stack i{display:block; width:30px; height:9px; border:2px solid var(--edge); border-radius:3px;}
+  /* the end-of-run ruler */
+  #ruler{position:fixed; inset:0; z-index:16; pointer-events:none;
+    display:flex; align-items:center; justify-content:center;}
+  #ruler.hidden{display:none;}
+  .rulercol{
+    position:relative; width:124px; height:min(66vh,520px);
+    background:linear-gradient(rgba(255,255,255,.82),rgba(255,255,255,.62));
+    border:4px solid var(--edge); border-radius:18px; overflow:hidden;
+    box-shadow:0 8px 0 rgba(40,12,60,.35);
+  }
+  .rulerticks{position:absolute; inset:0;}
+  .rulerticks i{
+    position:absolute; left:0; right:0; border-top:2px solid rgba(60,20,80,.18);
+    font-style:normal; font-size:12px; font-weight:800; color:#5b3a70;
+    text-align:right; padding-right:7px;
+  }
+  .hsband{
+    position:absolute; left:0; right:0; height:22px; bottom:0;
+    background:linear-gradient(#ffe06a,#f0b91c); border-top:3px solid var(--edge);
+    border-bottom:3px solid var(--edge);
+    transition:bottom .5s cubic-bezier(.2,.8,.2,1);
+  }
+  .hsband span{
+    /* Inside the column, because .rulercol clips its overflow and a tab hung
+       off the left edge loses its first letters. */
+    position:absolute; left:5px; top:-10px; font-size:8px; letter-spacing:.04em;
+    background:linear-gradient(#ffe06a,#f0b91c); border:3px solid var(--edge);
+    border-radius:9px; padding:3px 6px; color:#5b3a70; white-space:nowrap;
+  }
+  /* The stack sits in the LEFT half of the column so the scale beside it stays
+     readable. A full-width bar covers its own ruler, which is the one thing the
+     ruler is for. */
+  .rstack{
+    position:absolute; left:9px; right:52px; bottom:0; height:0;
+    background:repeating-linear-gradient(#5ee08a 0 9px,#3fc06e 9px 18px);
+    border:3px solid var(--edge); border-bottom:none; border-radius:8px 8px 0 0;
+    transition:height 1.5s cubic-bezier(.15,.7,.2,1);
+  }
+  .rstack b{
+    position:absolute; left:50%; top:-16px; transform:translateX(-50%);
+    font-size:12px; background:linear-gradient(#7fe6a0,#25a854); color:#fff;
+    border:3px solid var(--edge); border-radius:9px; padding:2px 8px; white-space:nowrap;
+  }
 
   #toast{
     position:fixed; left:0; right:0; top:29%; text-align:center; font-size:26px;
     opacity:0; transition:opacity .25s; letter-spacing:.05em;
-  }
-  #hint{
-    position:fixed; left:0; right:0; bottom:calc(var(--safe-b) + 26px); text-align:center;
-    font-size:13px; opacity:.95; transition:opacity .6s; letter-spacing:.06em;
   }
   #pops{position:fixed; inset:0; pointer-events:none; overflow:hidden;}
   .pop{position:absolute; font-size:18px; will-change:transform,opacity; white-space:nowrap;}
@@ -201,61 +287,79 @@
   .wipe:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
   .wipenote{margin-top:8px; font-size:10.5px; letter-spacing:.05em; color:#a04a58; text-align:center;}
 
-  /* the result card */
-  #result{
-    margin:2px 0 14px; padding:12px; border:4px solid var(--edge); border-radius:16px;
-    background:linear-gradient(#fff8fc,#ffe9f4); box-shadow:0 4px 0 var(--edge);
+  /* the reward screen */
+  #reward{background:none;}
+  .rwd{
+    width:100%; height:100%; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:10px; padding:20px;
+    background:linear-gradient(#e05fd0,#c33bb4); color:#fff;
   }
-  #result.hidden{display:none;}
-  #gauge{
-    position:relative; height:150px; margin:2px 0 12px; border:4px solid var(--edge);
-    border-radius:14px; background:linear-gradient(#efe4fb,#fff); overflow:hidden;
-    box-shadow:inset 0 3px 0 rgba(0,0,0,.08);
+  .rwdcoins{display:flex; align-items:center; gap:10px; font-size:34px; font-weight:800;
+    text-shadow:0 3px 0 rgba(0,0,0,.28);}
+  .coin.big{width:26px; height:26px; border-width:3px;}
+  .rwdhs{font-size:19px; letter-spacing:.05em; text-shadow:0 3px 0 rgba(0,0,0,.28);}
+  .rwdhs.hidden{display:none;}
+  .rwdprod{
+    width:150px; height:180px; margin:4px 0;
+    display:flex; align-items:flex-end; justify-content:center;
   }
-  #gaugeFill{position:absolute; inset:auto 0 0 0; height:0%;
-    background:linear-gradient(#ff8ec0,#e8226e); transition:height 1.1s cubic-bezier(.2,.8,.2,1);}
-  #gaugeTicks{position:absolute; inset:0; z-index:2;}
-  #gaugeTicks i{position:absolute; left:0; right:0; border-top:2px dashed rgba(60,20,80,.22);
-    font-style:normal; font-size:10px; color:#7a5a8c; padding-left:6px; font-weight:700;}
-  #gaugeMark{position:absolute; left:0; right:0; height:4px; background:var(--edge); bottom:0; z-index:3;
-    transition:bottom 1.1s cubic-bezier(.2,.8,.2,1);}
-  #rStars{text-align:center; margin-bottom:8px;}
-  #rStars i{font-style:normal; font-size:34px; color:#dcc9e8; margin:0 3px;
-    text-shadow:0 2px 0 rgba(0,0,0,.15);}
-  #rStars i.on{color:var(--gold); text-shadow:0 2px 0 #a06a00;}
-  .rrow{display:flex; align-items:baseline; gap:8px; padding:4px 0; font-size:12px;
-    border-top:1px solid rgba(60,20,80,.12);}
-  .rrow:first-child{border-top:none;}
-  .rk{width:78px; flex:none; color:var(--pink); letter-spacing:.1em; font-size:10.5px;}
-  .rd{flex:1; color:#7a5a8c; font-weight:700;}
-  .rv{color:var(--ink); font-size:13px;}
-  .rtot{display:flex; justify-content:space-between; align-items:center; margin-top:9px; padding-top:9px;
-    border-top:3px solid rgba(60,20,80,.2);}
-  .rtot span{font-size:10.5px; letter-spacing:.14em; color:var(--pink);}
-  .rtot b{font-size:26px; color:#1c9e4c;}
+  .rwdprod i{
+    display:block; width:74px; border:5px solid #fff; border-radius:38px 38px 12px 12px;
+    background:#7d1030; box-shadow:0 8px 0 rgba(0,0,0,.2);
+  }
+  .rwdpct{font-size:22px; font-weight:800; text-shadow:0 3px 0 rgba(0,0,0,.28);}
 
-  .counter{margin-top:12px;}
-  .counter h3{
-    margin:0 0 6px; font-size:11px; letter-spacing:.2em; color:var(--pink);
-    border-bottom:3px solid #f6d6e6; padding-bottom:4px;
+  /* The multiplier fan: five wedges and a needle. */
+  .fan{position:relative; width:230px; height:118px; margin-top:2px;}
+  .fanwedges{
+    position:absolute; inset:0; border-radius:115px 115px 0 0; overflow:hidden;
+    border:4px solid var(--edge); border-bottom:none;
+    display:flex;
   }
-  .up{display:flex; align-items:center; gap:9px; padding:7px 0;}
-  .upic{width:36px; height:36px; flex:none; border:3px solid var(--edge); border-radius:11px;
-    display:flex; align-items:center; justify-content:center; font-size:17px; background:#ffe3f0;}
-  .upinfo{flex:1; min-width:0;}
-  .upname{font-size:13.5px; color:#fff;}
-  .upeff{font-size:10.5px; color:#7a5a8c; margin-top:2px; font-weight:700;}
-  .buy{
-    border:3px solid var(--edge); border-radius:12px; padding:9px 12px; font-size:13px; font-weight:800;
-    background:linear-gradient(#4fe07d,#25a854); color:#06331a; box-shadow:0 4px 0 var(--edge);
-    white-space:nowrap; min-width:76px; font-family:inherit;
+  .fanwedges i{
+    flex:1; display:flex; align-items:flex-end; justify-content:center; padding-bottom:8px;
+    font-style:normal; font-weight:800; font-size:15px; color:#fff;
+    text-shadow:0 2px 0 rgba(0,0,0,.3); border-right:3px solid rgba(40,12,60,.35);
   }
-  .buy:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
-  .buy.no{background:linear-gradient(#d8cfe0,#a898b8); color:#5f4a70;}
-  .buy.max{background:linear-gradient(#ffd96a,#e0a010); color:#4a2f00;}
-  .up.locked{opacity:.6;}
-  .up.locked .upic{background:#e6dcee;}
-  .lockmsg{font-size:11px; color:var(--pink); font-weight:800;}
+  .fanwedges i:last-child{border-right:none;}
+  .fanwedges .w2,.fanwedges .w2b{background:#2fbf5c;}
+  .fanwedges .w3,.fanwedges .w3b{background:#2f7fd6;}
+  .fanwedges .w5{background:#8a3fd6;}
+  .needle{
+    position:absolute; left:50%; bottom:0; width:8px; height:96px; margin-left:-4px;
+    background:linear-gradient(#ffe06a,#e8a917); border:3px solid var(--edge);
+    border-radius:5px; transform-origin:50% 100%;
+    transition:transform 1.1s cubic-bezier(.2,.9,.2,1);
+  }
+  .claim{
+    margin-top:14px; min-width:210px; font-family:inherit; font-weight:800; font-size:17px;
+    letter-spacing:.08em; cursor:pointer; padding:15px 22px;
+    border:4px solid var(--edge); border-radius:16px;
+    background:linear-gradient(#ffd85e,#f0a81c); color:#fff; box-shadow:0 6px 0 var(--edge);
+    text-shadow:0 2px 0 rgba(0,0,0,.25);
+  }
+  .claim:active{transform:translateY(4px); box-shadow:0 2px 0 var(--edge);}
+
+  /* a shop front in the sheet, drawn like the panels beside the track */
+  .front{
+    display:flex; align-items:center; gap:11px; margin-bottom:10px; padding:11px 12px;
+    border:4px solid var(--edge); border-radius:16px; background:#fff8fc;
+    box-shadow:0 4px 0 var(--edge);
+  }
+  .front.locked{opacity:.55;}
+  .front .fic{font-size:27px; width:38px; text-align:center; flex:none;}
+  .front .fbody{flex:1; min-width:0;}
+  .front .fname{font-size:14px; letter-spacing:.04em; color:var(--ink);}
+  .front .feff{font-size:10.5px; letter-spacing:.04em; color:#8a6a9c; margin-top:2px;}
+  .plusbtn{
+    flex:none; width:54px; height:44px; font-family:inherit; font-weight:800; font-size:12px;
+    border:3px solid var(--edge); border-radius:13px; cursor:pointer;
+    background:linear-gradient(#4fe07d,#25a854); color:#fff; box-shadow:0 3px 0 var(--edge);
+    text-shadow:0 2px 0 rgba(0,0,0,.25);
+  }
+  .plusbtn.no{background:linear-gradient(#e4d8ee,#c3b2d2); color:#5b3a70; text-shadow:none;}
+  .plusbtn.max{background:linear-gradient(#ffd85e,#f0a81c);}
+  .plusbtn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
 
   /* The START button is pinned to the bottom of the sheet rather than sitting
      at the end of the list.
@@ -323,38 +427,62 @@
 
 <div id="game"></div>
 
+<!-- THE HUD IS THREE THINGS. Gear, level, money.
+
+     Six versions of this game carried a candle counter, a running value, a
+     colour-chip readout and a progress bar, and the reference has none of them:
+     it tells you how you are doing with floating green +143$ over the tray and
+     nothing else. Adding readouts is the easiest way to stop looking like it. -->
 <div id="hud">
   <div class="toprow">
-    <div class="tleft">
-      <div class="panel" id="level">1<small>LEVEL</small></div>
-      <!-- Beside the level pill rather than in a corner: the HUD is
-           pointer-events:none, so anything clickable has to opt back in, and one
-           cluster that does is easier to keep honest than four. -->
-      <button class="panel uibtn" id="btnPause" aria-label="Pause">&#10073;&#10073;</button>
-    </div>
-    <div class="money out" id="coinsWrap">$<span id="coins">0</span></div>
+    <button class="iconbtn uibtn" id="btnPause" aria-label="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.6a3.4 3.4 0 100 6.8 3.4 3.4 0 000-6.8zm8.6 3.4c0-.5 0-1-.1-1.4l2-1.5-2-3.4-2.3 1a7.7 7.7 0 00-2.4-1.4L15.4 2h-4l-.4 2.3c-.9.3-1.7.8-2.4 1.4l-2.3-1-2 3.4 2 1.5a8.6 8.6 0 000 2.8l-2 1.5 2 3.4 2.3-1c.7.6 1.5 1.1 2.4 1.4l.4 2.3h4l.4-2.3c.9-.3 1.7-.8 2.4-1.4l2.3 1 2-3.4-2-1.5c.1-.4.1-.9.1-1.4z"/></svg>
+    </button>
+    <div class="lvlpill out" id="level">Level 1</div>
+    <div class="money out" id="coinsWrap"><i class="coin"></i><span id="coins">0</span> $</div>
   </div>
-  <div id="bars"><div id="prog"><i></i></div></div>
-</div>
-
-<div id="countBox" class="out">
-  <div id="countN">4</div><small>CANDLES</small>
-</div>
-
-<div id="valBox">
-  <div class="lbl">VALUE</div>
-  <div id="eachN" class="out">$0</div>
-  <div id="cashN" class="out">$0</div>
-</div>
-
-<div id="stackBox">
-  <small>BANDS</small>
-  <div id="stack"></div>
 </div>
 
 <div id="toast" class="out"></div>
-<div id="hint" class="out">DRAG TO STEER</div>
 <div id="pops"></div>
+
+<!-- The home screen. Not a sheet over the game: the runway is live behind it
+     and the run starts when you swipe, which is the reference's whole
+     between-run state. -->
+<div id="home" class="hidden">
+  <button class="shopbtn uibtn" id="btnShop">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l1.6-4h14.8L21 8v1.2a2.6 2.6 0 01-4.5 1.8 2.6 2.6 0 01-4.5.9 2.6 2.6 0 01-4.5-.9A2.6 2.6 0 013 9.2zm1.8 4.4V20h14.4v-7.6a4 4 0 01-3-.7 4 4 0 01-4.2 0 4 4 0 01-4.2 0 4 4 0 01-3 .7z"/></svg>
+    <span>SHOP</span>
+  </button>
+
+  <div class="boosts">
+    <button class="boost candle" id="boostCandle">
+      <div class="btitle">CANDLE</div>
+      <div class="bic">&#128367;</div>
+      <div class="bsub">EXTRA +<b id="boostCandleN">1</b></div>
+      <div class="bcost"><i class="coin"></i><b id="boostCandleC">500</b></div>
+    </button>
+    <button class="boost cash" id="boostCash">
+      <div class="btitle">CASH</div>
+      <div class="bic">&#128181;</div>
+      <div class="bsub">BONUS x<b id="boostCashN">1.5</b></div>
+      <div class="bcost"><i class="coin"></i><b id="boostCashC">500</b></div>
+    </button>
+  </div>
+
+  <div class="swipehint"><span>&#10094;</span><em>&#9995;</em><span>&#10095;</span></div>
+</div>
+
+<!-- The end-of-run ruler: an ABSOLUTE money scale with your best marked on it,
+     which the finished batch climbs. Not a fraction of a target, and not stars
+     - the reference asks one question, "did you beat your own best". -->
+<div id="ruler" class="hidden">
+  <div class="rulercol">
+    <div class="rulerticks" id="rulerTicks"></div>
+    <div class="hsband" id="hsBand"><span>HIGH SCORE</span></div>
+    <div class="rstack" id="rStack"><b id="rStackN">0</b></div>
+  </div>
+</div>
 
 <!-- The pause screen. A `.modal` like the workshop, which is not only for the
      look: `onUI()` in the input layer treats anything inside `.modal` as UI and
@@ -391,26 +519,39 @@
   </div>
 </div>
 
+<!-- THE REWARD SCREEN. Magenta, full bleed, and the shape of the reference's:
+     what you earned, whether it beat your best, the thing you made, and a
+     multiplier fan you may take or gamble. No itemised card, no star rating -
+     both were ours. -->
+<div id="reward" class="modal hidden">
+  <div class="rwd">
+    <div class="rwdcoins"><i class="coin big"></i><b id="rwdAmt">0</b></div>
+    <div class="rwdhs hidden" id="rwdHs">NEW HIGH SCORE!</div>
+    <div class="rwdprod" id="rwdProd"></div>
+    <div class="rwdpct" id="rwdPct">%0</div>
+    <div class="fan" id="fan">
+      <div class="fanwedges">
+        <i class="w2">x2</i><i class="w3">x3</i><i class="w5">x5</i><i class="w3b">x3</i><i class="w2b">x2</i>
+      </div>
+      <div class="needle" id="fanNeedle"></div>
+    </div>
+    <button class="claim" id="btnClaim"><span id="claimLbl">TAKE 0</span></button>
+  </div>
+</div>
+
+<!-- The shop. The reference's progression is BUYING SHOPS beside the track -
+     Scent, Online, Luxury, the Boutique - each with a green plus. There is no
+     stat list anywhere in six levels of footage, so there is no stat list here
+     any more either. -->
 <div id="shopScreen" class="modal hidden">
   <div class="sheet">
     <div class="shead">
-      <h2 class="out" id="shopTitle">THE WORKSHOP</h2>
-      <div class="sub" id="shopSub">READY TO RUN</div>
+      <h2 class="out" id="shopTitle">SHOP</h2>
+      <div class="sub" id="shopSub">BUY A NEW STATION FOR THE LINE</div>
       <div class="bal out">
-        <span>$<b id="sCoins">0</b></span>
-        <span><em>BEST</em> $<b id="sBest">0</b></span>
-        <span><em>★</em> <b id="sStars">0</b></span>
+        <span><i class="coin"></i> <b id="sCoins">0</b> $</span>
+        <span><em>BEST</em> <b id="sBest">0</b> $</span>
       </div>
-    </div>
-
-    <div id="result" class="hidden">
-      <!-- The reference measures a finished run on a vertical gauge with a
-           numeric scale rather than awarding stars. The stars stay underneath
-           as the between-level goal, but the gauge is the moment. -->
-      <div id="gauge"><div id="gaugeTicks"></div><div id="gaugeFill"></div><div id="gaugeMark"></div></div>
-      <div id="rStars"></div>
-      <div id="rRows"></div>
-      <div class="rtot"><span>PAID</span><b id="rTotal">$0</b></div>
     </div>
 
     <div id="shop"></div>
@@ -422,7 +563,7 @@
     <div id="notes" class="notes hidden"></div>
     <div class="stamp" id="build"></div>
 
-    <div class="gowrap"><button class="go" id="btnGo">START THE LINE</button></div>
+    <div class="gowrap"><button class="go" id="btnGo">BACK TO THE LINE</button></div>
   </div>
 </div>
 

@@ -342,13 +342,15 @@ test('some pickup lines are guarded by an obstacle', async ({ page }) => {
 
 // ── the gift table and the shop ─────────────────────────────────────────────
 
-test('reaching the table sells the tray, lights it and opens the next level',
+test('reaching the table lights the batch, then measures it against your best',
   async ({ page }) => {
+    /* The end of a run is now the reference's: a numeric ruler with your own
+       best marked on it, which the batch climbs. No stars, and no level
+       advance until the reward is taken - taking it is the player's move. */
     await bootFresh(page);
+    await page.evaluate(() => { (window as any).__CR.S.bestValue = 1; });
     const { result } = await playLevel(page, 'gather');
     expect(result.value).toBeGreaterThan(0);
-    expect(result.stars).toBeGreaterThanOrEqual(0);
-    expect(result.stars).toBeLessThanOrEqual(3);
 
     const lit = await page.evaluate(() => {
       const CR = (window as any).__CR;
@@ -357,52 +359,85 @@ test('reaching the table sells the tray, lights it and opens the next level',
     });
     expect(lit.flames, 'the finished candles must light on the table').toBeGreaterThan(0);
     expect(lit.light, 'and cast the one warm light in the game').toBeGreaterThan(0);
-    expect(lit.level, 'selling advances the level').toBeGreaterThan(1);
+    expect(lit.level, 'the level does not advance until the reward is taken').toBe(1);
 
-    await expect(page.locator('#shopScreen')).not.toHaveClass(/hidden/, { timeout: 10_000 });
-    await expect(page.locator('#result')).not.toHaveClass(/hidden/);
-    await expect(page.locator('#rTotal')).not.toHaveText('$0');
-    await expect(page.locator('#rStars i')).toHaveCount(3);
+    await expect(page.locator('#ruler')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+    await expect(page.locator('#rulerTicks i').first()).toBeVisible();
+    await expect(page.locator('#hsBand')).toBeVisible();
   });
 
-test('the results screen reports the tray it was actually paid for', async ({ page }) => {
-  await bootFresh(page);
-  const { result: a, state: s } = await playLevel(page, 'weave');
-  expect(a.count).toBe(s.count);
-  expect(a.stats.count).toBe(s.count);
-  expect(a.stats.pressed).toBe(s.pressed);
-  expect(a.stats.wrapped).toBe(s.wrapped);
-  expect(Math.abs(a.each * a.count - a.candles)).toBeLessThan(1e-6);
-  await expect(page.locator('#rRows .rrow').first()).toContainText('CANDLES');
-});
+test('the reward screen pays what the run was worth, and taking it moves on',
+  async ({ page }) => {
+    await bootFresh(page);
+    const { result: a, state: st } = await playLevel(page, 'weave');
+    expect(a.count).toBe(st.count);
+    expect(Math.abs(a.each * a.count - a.candles)).toBeLessThan(1e-6);
 
-test('the workshop scrolls, and START is reachable without scrolling', async ({ page }) => {
+    await expect(page.locator('#reward')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+    await expect(page.locator('#rwdAmt')).not.toHaveText('0');
+    await expect(page.locator('#rwdHs'), 'the first run always beats a best of zero')
+      .not.toHaveClass(/hidden/);
+    /* Five wedges and a needle, which is the shape of the reference's. */
+    await expect(page.locator('#fan .fanwedges i')).toHaveCount(5);
+
+    const label = await page.locator('#claimLbl').textContent();
+    expect(label, `claim button read "${label}"`).toMatch(/^(TAKE|CLAIM x\d)/);
+
+    const coinsBefore = await page.evaluate(() => (window as any).__CR.S.coins);
+    await page.locator('#btnClaim').click();
+    await expect(page.locator('#reward')).toHaveClass(/hidden/);
+    const after = await page.evaluate(() => {
+      const CR = (window as any).__CR;
+      return { coins: CR.S.coins, level: CR.S.level, best: CR.S.bestValue };
+    });
+    expect(after.coins, 'the claim pays out').toBeGreaterThan(coinsBefore);
+    expect(after.level, 'and moves to the next level').toBe(2);
+    expect(after.best).toBeGreaterThan(0);
+    /* Back to the home screen, over a live runway, which is where the
+       reference sits between runs. */
+    await expect(page.locator('#home')).not.toHaveClass(/hidden/);
+  });
+
+test('the shop scrolls, and the way out is reachable without scrolling', async ({ page }) => {
   /* This was a hard blocker on the phone: `touch-action: none` on body - which
      a browser intersects up the whole ancestor chain - stopped the sheet
      panning, and the window-level steering handler called preventDefault() on
-     drags over it. START sat below eight upgrades, so unscrollable meant the
-     game could not be continued past the first level. */
+     drags over it. The way out sat below the whole list, so unscrollable meant
+     the game could not be continued. */
   await bootFresh(page);
   await page.evaluate(() => {
     const CR = (window as any).__CR;
     CR.S.coins = 9999999; CR.S.best = 9;
   });
-  await playLevel(page, 'gather');
+  /* The shop is reached from the SHOP button on the home screen now, not by
+     finishing a level - and `bootFresh` starts a run, which hides it. */
+  await page.evaluate(() => (window as any).__CR.toHome());
+  await page.locator('#btnShop').click();
   await expect(page.locator('#shopScreen')).not.toHaveClass(/hidden/, { timeout: 10_000 });
 
+  /* The shop is four shop fronts now and no longer overflows on its own, so
+     the patch notes are opened to give the sheet something to scroll. Without a
+     sheet that is actually too long this test asserts nothing at all - which is
+     exactly how a scroll regression got shipped the first time. */
+  await page.locator('#btnNotes').click();
   const sheet = page.locator('#shopScreen .sheet');
   const box = await sheet.evaluate((el) => ({
     scrollH: el.scrollHeight, clientH: el.clientHeight,
     touch: getComputedStyle(el).touchAction,
     bodyTouch: getComputedStyle(document.body).touchAction,
   }));
-  expect(box.scrollH, 'the shop must be longer than the sheet, or this proves nothing')
+  expect(box.scrollH, 'the sheet must be longer than the screen, or this proves nothing')
     .toBeGreaterThan(box.clientH + 40);
   expect(box.bodyTouch, 'touch-action on body blocks panning in every scroller under it')
     .not.toBe('none');
   expect(box.touch).toMatch(/pan-y|auto|manipulation/);
 
-  await sheet.evaluate((el) => { el.scrollTop = 0; });
+  /* And it really scrolls, not just "is scrollable on paper". */
+  const moved = await sheet.evaluate((el) => {
+    el.scrollTop = 0; el.scrollTop = 120; const got = el.scrollTop; el.scrollTop = 0; return got;
+  });
+  expect(moved, 'the sheet did not move when scrolled').toBeGreaterThan(0);
+
   const go = page.locator('#btnGo');
   await expect(go).toBeInViewport();
 
@@ -418,24 +453,46 @@ test('the workshop scrolls, and START is reachable without scrolling', async ({ 
   await expect(page.locator('#shopScreen')).toHaveClass(/hidden/);
 });
 
-test('the shop sells things, and a purchase changes the game', async ({ page }) => {
+test('the shop sells SHOPS, and a purchase changes the line', async ({ page }) => {
+  /* Progression is buying stations, which is the reference's model. The five
+     stat upgrades that used to be here - Bigger Batch, Steady Tray, Long Reach,
+     Deeper Vats, Glitter Cannon - appear nowhere in six levels of its footage
+     and are gone; this test buys the Scent Shop, which adds a STATION. */
   await bootFresh(page);
   await page.evaluate(() => {
     const CR = (window as any).__CR;
-    CR.S.coins = 9999999; CR.S.best = 9; CR.S.seenShop = true;
+    CR.S.coins = 9999999; CR.S.best = 9;
   });
-  const startedWith = await page.evaluate(() => (window as any).__CR.state().count);
-  await playLevel(page, 'dodge');
+  await page.evaluate(() => (window as any).__CR.toHome());
+  await page.locator('#btnShop').click();
   await expect(page.locator('#shopScreen')).not.toHaveClass(/hidden/, { timeout: 10_000 });
 
-  const before = await page.evaluate(() => (window as any).__CR.S.up.stack);
-  await page.locator('[data-buy="stack"]').click();
-  expect(await page.evaluate(() => (window as any).__CR.S.up.stack)).toBe(before + 1);
+  /* None of the removed stat upgrades may come back by accident. */
+  for (const dead of ['stack', 'grip', 'reach', 'vat', 'spark']) {
+    await expect(page.locator(`[data-buy="${dead}"]`)).toHaveCount(0);
+  }
+
+  expect(await page.evaluate(() => (window as any).__CR.S.up.scent)).toBe(0);
+  await page.locator('[data-buy="scent"]').click();
+  expect(await page.evaluate(() => (window as any).__CR.S.up.scent)).toBe(1);
 
   await page.locator('#btnGo').click();
   await expect(page.locator('#shopScreen')).toHaveClass(/hidden/);
-  const s = await state(page);
-  expect(s.count, 'the next tray starts bigger').toBeGreaterThan(startedWith);
+
+  /* And the station it bought really runs. */
+  await page.evaluate(() => (window as any).__CR.freeze());
+  const kinds = await page.evaluate(() => {
+    const CR = (window as any).__CR;
+    const seen = new Set<string>();
+    for (let i = 0; i < 400; i++) {
+      for (const st of CR.stations()) {
+        seen.add(CR.KINDS[st.left.kind].n); seen.add(CR.KINDS[st.right.kind].n);
+      }
+      CR.advance(0.1, 0.016, false);
+    }
+    return [...seen];
+  });
+  expect(kinds, `station kinds seen: ${kinds.join(',')}`).toContain('SCENT');
 });
 
 // ── rendering ───────────────────────────────────────────────────────────────
@@ -469,21 +526,35 @@ test('draw calls stay in budget with the runway full', async ({ page }) => {
   expect(s.calls, 'a collapse to almost nothing means a layer stopped drawing').toBeGreaterThan(12);
 });
 
-test('the HUD says what the model says', async ({ page }) => {
+test('the HUD is three things, and says what the model says', async ({ page }) => {
+  /* The reference's HUD is the gear, the level and the money. Everything else
+     this game used to draw - a candle counter, a running value, colour chips, a
+     progress bar - was ours, and together they were most of why a screenshot of
+     this did not look like a screenshot of that. They must stay gone. */
   await bootFresh(page, 24);
   const s = await state(page);
-  await expect(page.locator('#countN')).toHaveText(String(s.count));
-  await expect(page.locator('#level')).toContainText('1');
-  /* One chip per wax the tray is actually wearing - the readout that makes
-     weaving legible. */
+  for (const dead of ['#countN', '#eachN', '#cashN', '#stack', '#prog', '#hint']) {
+    await expect(page.locator(dead), `${dead} came back`).toHaveCount(0);
+  }
+  await expect(page.locator('#level')).toContainText('Level 1');
+  await expect(page.locator('#btnPause')).toBeVisible();
+  /* The model still knows the tray's palette; the HUD simply stops drawing it.
+     Kept as an assertion so removing the readout cannot be mistaken for
+     removing the thing it read. */
   const waxes = await page.evaluate(() =>
     (window as any).__CR.trayStats().palette.filter((n: number) => n > 0).length);
-  await expect(page.locator('#stack i')).toHaveCount(waxes);
+  expect(waxes, 'the tray still wears colours, the HUD just does not chart them')
+    .toBeGreaterThan(0);
+  expect(s.count).toBeGreaterThan(0);
 });
 
 test('the build stamp and version are populated', async ({ page }) => {
+  /* Reachable from the SHOP button now that there is no between-level sheet.
+     The stamp is how a deploy is checked on the phone, so it has to stay
+     reachable in two taps. */
   await bootFresh(page);
-  await playLevel(page, 'idle');
+  await page.evaluate(() => (window as any).__CR.toHome());
+  await page.locator('#btnShop').click();
   await expect(page.locator('#shopScreen')).not.toHaveClass(/hidden/, { timeout: 10_000 });
   await expect(page.locator('#verNum')).toHaveText('v' + VERSION);
   await expect(page.locator('#build')).toContainText('build');
@@ -547,6 +618,8 @@ test('pause actually stops the simulation, and resume starts it again',
        hands the simulation the whole length of the pause as one step teleports
        the tray through whatever was in front of it. */
     await bootLive(page);
+    /* A level waits for a swipe now, so the harness has to provide one. */
+    await page.evaluate(() => (window as any).__CR.startRun());
     await page.waitForTimeout(300);
     const before = (await state(page)).z;
     expect(before, 'the run should be moving before the pause').toBeGreaterThan(0);
@@ -572,16 +645,22 @@ test('pause actually stops the simulation, and resume starts it again',
        assertions above are the ones that can actually fail. */
   });
 
-test('the pause button is only there while there is a run to pause', async ({ page }) => {
+test('the gear is up over the world and down over a sheet', async ({ page }) => {
+  /* The reference shows its settings gear during a run AND on the home screen
+     between runs, because both are the world. It comes down only when a
+     full-screen sheet already owns the input. */
   await bootLive(page);
-  await expect(page.locator('#btnPause')).toBeVisible();
-  /* Finishing the level opens the workshop; a pause button over the results
-     screen is a button that does nothing. */
-  await page.evaluate(() => {
-    const CR = (window as any).__CR;
-    CR.run.z = CR.T.levelChunks * CR.T.chunk + 20;
-  });
-  await expect(page.locator('#btnPause')).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator('#home')).not.toHaveClass(/hidden/);
+  await expect(page.locator('#btnPause'), 'up on the home screen').toBeVisible();
+
+  await page.evaluate(() => (window as any).__CR.startRun());
+  await expect(page.locator('#btnPause'), 'and during a run').toBeVisible();
+
+  await page.locator('#btnPause').click();
+  await page.locator('#btnResume').click();
+  await page.evaluate(() => (window as any).__CR.toHome());
+  await page.locator('#btnShop').click();
+  await expect(page.locator('#btnPause'), 'down over the shop').toBeHidden({ timeout: 10_000 });
 });
 
 test('the settings switches persist and reach the audio graph', async ({ page }) => {
@@ -670,10 +749,7 @@ test('clearing the save takes two taps, erases the run, and keeps the settings',
     });
     await page.goto('/?debug');
     await expect(page.locator('#boot')).toHaveClass(/hidden/, { timeout: 20_000 });
-    await expect(page.locator('#level')).toContainText('7');
-    /* `seenShop` puts the workshop up at boot, and the pause button is
-       deliberately not offered over it. */
-    await page.locator('#btnGo').click();
+    await expect(page.locator('#level')).toContainText('Level 7');
 
     await page.locator('#btnPause').click();
     const wipe = page.locator('#btnWipe');
@@ -689,7 +765,7 @@ test('clearing the save takes two taps, erases the run, and keeps the settings',
     // the second tap erases, and the page reloads itself into a fresh game
     await wipe.click();
     await page.waitForFunction(
-      () => document.getElementById('level')?.textContent?.startsWith('1') === true,
+      () => document.getElementById('level')?.textContent === 'Level 1',
       undefined, { timeout: 20_000 });
 
     /* The real assertion is not "the key is null" - boot writes a fresh one

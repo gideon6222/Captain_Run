@@ -69,6 +69,29 @@ npm run size       # bundle size guard, fails in both directions
 | `REFERENCE.md` | **What the real game actually does**, observed from its screenshots and a gameplay video |
 | `NOTES.md` | Design decisions, tuning as shipped, and what to do next |
 
+## The screens are the reference's, not ours
+
+Five builds got the runway closer and closer and left the *screens* alone, and the screens
+were most of what still felt wrong. All of them are now rebuilt from the walkthrough video —
+`REFERENCE.md` has the frames and how to pull them.
+
+- **The HUD is three things**: a settings gear, a `Level N` pill, a money pill. There is no
+  candle counter, no running value, no colour chips and no progress bar in the reference, and
+  every one of those was ours. Value arrives as floating green `+143$` over the tray.
+- **Between runs the player sits on the runway**, not in a sheet: a `SHOP` button and two
+  boost cards over a live world, and the first swipe starts the run. `startLevel()` therefore
+  builds a level with `run.active = false` and `startRun()` begins it.
+- **The end of a run is a money RULER** with your own best marked on it in yellow, which the
+  batch climbs. Absolute money, not a fraction of a target, and no stars.
+- **Then a reward screen**: the amount, `NEW HIGH SCORE!`, the product, and a multiplier fan.
+- **The shop sells SHOPS.** Online, Scent, Boutique, Luxury — every one named in the
+  reference. Bigger Batch, Steady Tray, Long Reach, Deeper Vats and the Glitter Cannon were
+  invented here, appear in none of six levels of footage, and are gone. The count axis is the
+  CANDLE boost card, which is what the reference uses.
+- **`stars` is now a test-only signal.** Nothing shows it to a player; it survives because
+  `par still separates the ways of playing a level` uses it as a calibration guard, which is
+  worth more than the few lines it costs.
+
 ## The two axes
 
 Everything in the game is one of these:
