@@ -1,4 +1,4 @@
-// Captain Run — a viking crowd-runner.
+// Wick - a candle-dipping runner.
 // See NOTES.md for design decisions and CLAUDE.md for the shape of the repo.
 
 import * as THREE from 'three';
@@ -9,8 +9,10 @@ import { VERSION, CHANGELOG } from './changelog.js';
    and each extraction shrinks it - when it goes, these become `.js` like the
    TS files' own imports. */
 import { clamp, lerp, smooth, hash, fmt, makeRng } from './util';
-import { T, TIERS, PALETTES } from './tuning';
+import { T, WAXES, WORKSHOPS, SCENTS } from './tuning';
 import * as TU from './tuning';
+import * as CD from './candle';
+import { appraise } from './appraise';
 import { load, save as writeSave } from './save';
 import { createSfx } from './sfx';
 import { attach, toon, box, Layer, OUTLINE_MAT } from './gfx';
@@ -18,119 +20,176 @@ import { attach, toon, box, Layer, OUTLINE_MAT } from './gfx';
 // ─────────────────────────────────────────────────────────────────────────────
 // SAVE + DERIVED STATS
 //
-// The numbers themselves live in tuning.ts and the save format in save.ts, both
-// pure and both unit-tested. What is left here is the binding: one live save
-// object, and thin wrappers that hand it to those pure functions so the call
-// sites below can stay short.
+// The numbers themselves live in tuning.ts, the candle model in candle.ts and
+// the scoring in appraise.ts - all pure and all unit-tested. What is left here
+// is the binding: one live save object, and thin wrappers that hand it to
+// those pure functions so the call sites below can stay short.
 // ─────────────────────────────────────────────────────────────────────────────
 const S = load();
 const save = () => writeSave(S);
 
-const scaleFor    = (a) => TU.scaleFor(a);
-const weaponTier  = () => TU.weaponTier(S.up, run.forgeTier);
-const dmgPerHit   = () => TU.dmgPerHit(S.up, run.forgeTier);
-const squadDPS    = () => TU.squadDPS(S.up, run.forgeTier, run.crew);
-const maxCrew     = () => TU.maxCrew(S.up);
-const startCrew   = () => TU.startCrew(S.up);
-const runSpeed    = () => TU.runSpeed(S.up);
-const magnetR     = () => TU.magnetR(S.up);
-const goldMul     = () => TU.goldMul(S.up);
+const scaleFor  = (l) => TU.scaleFor(l);
+const priceMul  = () => TU.priceFor(S.level);
+const startWax  = () => TU.startWax(S.up);
+const wickLen   = () => TU.wickLength(S.up, S.scents);
+const shaveMul  = () => TU.shaveMul(S.up, S.scents);
+const meltMul   = () => TU.meltMul(S.up, S.scents);
+const dripMul   = () => TU.dripMul(S.up, S.scents);
+const lopMul    = () => TU.lopMul(S.up);
+const magnetR   = () => TU.magnetR(S.up);
+const valueMul  = () => TU.valueMul(S.up, S.scents);
+const maxLayers = () => TU.maxLayers(S.up);
+const snuffs    = () => TU.snuffs(S.scents);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDERER / SCENE
 // ─────────────────────────────────────────────────────────────────────────────
 const host = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearAlpha(0);
 host.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xcfe9f6, 58, 176);
+scene.fog = new THREE.FogExp2(0x6a4560, 0.014);
 
 const camera = new THREE.PerspectiveCamera(64, window.innerWidth / window.innerHeight, 0.5, 320);
-scene.add(camera);
 
-const amb = new THREE.AmbientLight(0xffffff, 0.72);
+/* Ambient is a *per-workshop* number here, not a constant, and it is low
+   everywhere. That is the whole visual idea: the previous game on this stack
+   was a daylight mountain and could afford 0.72, but a candle that is not the
+   brightest thing on screen is not a candle. Each workshop turns the room
+   further down until the Deep Dark is lit by the player and nothing else -
+   which is CRAFT.md's "make the framing an upgrade, then make the darkness
+   justify it", except the light source is the avatar. */
+const amb = new THREE.AmbientLight(0xffffff, 0.42);
 scene.add(amb);
-const hemi = new THREE.HemisphereLight(0xdff2ff, 0x4a3a26, 0.55);
+const hemi = new THREE.HemisphereLight(0xffd9a8, 0x2a1c30, 0.35);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffffff, 2.6);
+const sun = new THREE.DirectionalLight(0xffe6c4, 1.15);
 sun.position.set(-6, 12, -4);
 scene.add(sun);
 scene.add(sun.target);
+
+/* The flame is a real light, and this is the technique the game is built
+   around.
+
+   CRAFT.md already established that fog cannot fade the far edges of a 2.5D
+   plane - a camera twenty units back is roughly equidistant from all of it, so
+   turning fog up just greys the whole picture. A point light is the thing that
+   actually falls off across the ground, and here it is attached to the object
+   the player is steering. Every consequence of that is free: the road ahead
+   dims when the candle is small, a fat candle lights further, and water
+   snuffing the wick does not print a message - it turns the lights off. */
+const flameLight = new THREE.PointLight(0xffb861, 0, 34, 1.55);
+scene.add(flameLight);
+
 // Toon materials, outline hulls and the instanced Layer live in gfx.ts.
 // attach() hands it the scene; every Layer built below adds itself to that one.
 attach(scene);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PART LAYERS — one InstancedMesh per body part, rewritten every frame.
-// This is what lets 26 vikings, 18 draugr and 260 loot chunks cost ~50 draw calls.
+// LAYERS — one InstancedMesh per kind of thing, rewritten every frame.
 // ─────────────────────────────────────────────────────────────────────────────
-const M = new THREE.Matrix4(), M2 = new THREE.Matrix4(), M3 = new THREE.Matrix4();
-const MA = new THREE.Matrix4(), MB = new THREE.Matrix4();
+const M2 = new THREE.Matrix4(), M3 = new THREE.Matrix4();
 const Q = new THREE.Quaternion(), V = new THREE.Vector3(), V2 = new THREE.Vector3();
 const ONE = new THREE.Vector3(1, 1, 1);
 const CTMP = new THREE.Color();
 
-// ── crew layers ──────────────────────────────────────────────────────────────
-const L = {
-  leg:    new Layer(box(0.21, 0.52, 0.24), 0x6f4a2a, T.visCrew * 2, 0.060),
-  torso:  new Layer(box(0.62, 0.60, 0.44), 0xffffff, T.visCrew, 0.070),
-  belt:   new Layer(box(0.68, 0.13, 0.50), 0x2a1a0e, T.visCrew, 0),
-  arm:    new Layer(box(0.19, 0.46, 0.21), 0xffffff, T.visCrew * 2, 0),
-  head:   new Layer(box(0.40, 0.34, 0.38), 0xf2c79a, T.visCrew, 0.066),
-  beard:  new Layer(box(0.38, 0.30, 0.14), 0xffffff, T.visCrew, 0),
-  helm:   new Layer(box(0.48, 0.26, 0.44), 0xa9b6c4, T.visCrew, 0.066),
-  horn:   new Layer(new THREE.ConeGeometry(0.085, 0.26, 5), 0xf2e8cf, T.visCrew * 2, 0),
-  haft:   new Layer(box(0.075, 0.82, 0.075), 0x6b431f, T.visCrew, 0),
-  blade:  new Layer(box(0.36, 0.30, 0.09), 0xffffff, T.visCrew, 0.055),
-  shield: new Layer(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 8), 0xffffff, T.visCrew, 0.055),
-  shadow: new Layer(new THREE.CircleGeometry(0.34, 10), 0x000000, 90, 0),
-};
-L.shadow.mesh.material = new THREE.MeshBasicMaterial({ color: 0x1a1208, transparent: true, opacity: 0.26, depthWrite: false });
+/* A unit cylinder: radius 0.5 and height 1, so an instance scaled by
+   (2r, h, 2r) is exactly a ring of radius r and height h, and the geometry
+   never has to be rebuilt when the candle changes shape. Sixteen sides is the
+   point where the silhouette stops reading as a polygon at phone size; it was
+   ten first and the outline gave it visible flats. */
+const CYL = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
 
-// ── enemy layers (the boss is one of these, scaled up) ───────────────────────
-const E = {
-  leg:   new Layer(box(0.24, 0.55, 0.26), 0x3c4652, 40, 0.070),
-  torso: new Layer(box(0.78, 0.70, 0.46), 0xffffff, 20, 0.075),
-  arm:   new Layer(box(0.21, 0.50, 0.22), 0x3c4652, 40, 0),
-  head:  new Layer(box(0.36, 0.33, 0.34), 0xffffff, 20, 0.070),
-  horn:  new Layer(new THREE.ConeGeometry(0.09, 0.42, 5), 0x776346, 40, 0),
-  haft:  new Layer(box(0.10, 0.95, 0.10), 0x5a4530, 20, 0),
-  club:  new Layer(box(0.32, 0.36, 0.30), 0x6d7784, 20, 0.070),
+const RINGS = 18;   // maxLayers plus the mould upgrade, plus headroom
+const C = {
+  ring:  new Layer(CYL, 0xffffff, RINGS, 0.030),
+  wick:  new Layer(box(0.05, 1, 0.05), 0x2a1c12, 2, 0),
 };
 
-// ── world / pickup layers ────────────────────────────────────────────────────
+/* Additive, unlit, and outside the toon system entirely - a flame that takes a
+   shadow band across it stops being a light source and becomes a cone.
+
+   Two cones, not one. A single additive cone summed to near-white and read as
+   a pale spike stuck on the candle rather than as a flame: everything additive
+   over a bright core washes out, so the only way to keep a warm edge is to
+   have an edge that is not overlapping the core. An orange body with a
+   white-hot heart inside it is the whole difference. */
+const flameGeo = new THREE.ConeGeometry(0.5, 1, 10);
+const flameMesh = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({
+  color: 0xff8a26, transparent: true, opacity: 0.78, blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+flameMesh.renderOrder = 4;
+scene.add(flameMesh);
+const flameCore = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({
+  color: 0xfff0c8, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+flameCore.renderOrder = 5;
+scene.add(flameCore);
+
+/* Fake bloom, per CRAFT.md: an additive quad with a soft radial texture costs
+   one draw call where a post-processing pass costs a pipeline. The camera
+   never rolls, so a quad in the XY plane always faces it and no billboarding
+   is needed. */
+function haloTexture() {
+  const s = 64;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = s;
+  const g = cv.getContext('2d');
+  const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  grad.addColorStop(0, 'rgba(255,214,140,1)');
+  grad.addColorStop(0.35, 'rgba(255,160,60,0.42)');
+  grad.addColorStop(1, 'rgba(255,120,30,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, s, s);
+  const t = new THREE.CanvasTexture(cv);
+  t.needsUpdate = true;
+  return t;
+}
+const halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
+  map: haloTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+halo.renderOrder = 3;
+scene.add(halo);
+
+// ── world, hazards and pickups ───────────────────────────────────────────────
 const W = {
-  loot:   new Layer(box(0.34, 0.16, 0.26), 0xffffff, 420, 0),
-  axe:    new Layer(box(0.30, 0.11, 0.09), 0xffffff, 100, 0),
-  crate:  new Layer(box(0.9, 0.9, 0.9), 0xffffff, 20, 0.075),
-  band:   new Layer(box(1.0, 0.18, 1.0), 0x3a2412, 20, 0),
-  shrine: new Layer(new THREE.OctahedronGeometry(0.62, 0), 0xffffff, 12, 0.075),
+  drip:   new Layer(new THREE.OctahedronGeometry(0.22, 0), 0xffffff, 90, 0.030),
+  blade:  new Layer(new THREE.CylinderGeometry(T.bladeR, T.bladeR, 0.07, 12), 0xc9d6e0, 16, 0.045),
+  post:   new Layer(box(0.16, 1.5, 0.16), 0x4a3a2a, 16, 0),
+  lamp:   new Layer(new THREE.CylinderGeometry(0.34, 0.5, 0.62, 8), 0xff7a30, 12, 0.055),
+  lampleg:new Layer(box(0.12, 0.9, 0.12), 0x33261c, 12, 0),
+  pool:   new Layer(new THREE.CircleGeometry(0.5, 14), 0x5fc8e8, 12, 0),
+  flask:  new Layer(new THREE.OctahedronGeometry(0.42, 0), 0xffffff, 4, 0.055),
   step:   new Layer(box(T.roadW, 0.09, 0.55), 0xffffff, 70, 0),
-  trunk:  new Layer(box(0.3, 1.3, 0.3), 0xffffff, 80, 0),
-  tree:   new Layer(new THREE.ConeGeometry(1.15, 3.4, 6), 0xffffff, 80, 0.090),
-  rock:   new Layer(new THREE.IcosahedronGeometry(0.8, 0), 0xffffff, 90, 0.085),
-  mount:  new Layer(new THREE.ConeGeometry(30, 42, 5), 0xffffff, 10, 0),
+  taper:  new Layer(CYL, 0xffffff, 80, 0.055),
+  tip:    new Layer(new THREE.ConeGeometry(0.2, 0.5, 6), 0xffd88a, 80, 0),
+  block:  new Layer(box(0.9, 0.7, 0.9), 0xffffff, 60, 0.060),
+  far:    new Layer(new THREE.CylinderGeometry(6, 7.5, 34, 6), 0xffffff, 10, 0),
+  bench:  new Layer(box(4.6, 0.36, 1.5), 0x6b4a2c, 2, 0.075),
+  benchleg: new Layer(box(0.3, 1.1, 0.3), 0x4a3320, 8, 0),
+  shadow: new Layer(new THREE.CircleGeometry(0.5, 12), 0x000000, 60, 0),
 };
+W.shadow.mesh.material = new THREE.MeshBasicMaterial({ color: 0x0a0510, transparent: true, opacity: 0.34, depthWrite: false });
+W.pool.mesh.material = new THREE.MeshBasicMaterial({ color: 0x5fc8e8, transparent: true, opacity: 0.55, depthWrite: false });
 
 // road, kerbs, ground — plain meshes, one draw call each
-const road = new THREE.Mesh(box(T.roadW, 1.2, 1600), toon(0x9a8763));
+const road = new THREE.Mesh(box(T.roadW, 1.2, 1600), toon(0x8a6a4c));
 road.position.y = -0.6;
 scene.add(road);
-const kerbL = new THREE.Mesh(box(0.55, 1.0, 1600), toon(0x6d5b3e));
+const kerbL = new THREE.Mesh(box(0.55, 1.0, 1600), toon(0x5d452e));
 const kerbR = kerbL.clone();
 kerbL.position.set(-T.roadW / 2 - 0.2, -0.32, 0);
 kerbR.position.set(T.roadW / 2 + 0.2, -0.32, 0);
 scene.add(kerbL, kerbR);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 1600), toon(0x3d7a3c));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 1600), toon(0x4a3426));
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.95;
 scene.add(ground);
 
-// drifting motes
+// drifting motes — soot and pollen, cosmetic, deliberately on Math.random
 const MOTES = 130;
 const moteGeo = new THREE.BufferGeometry();
 const motePos = new Float32Array(MOTES * 3);
@@ -140,274 +199,310 @@ for (let i = 0; i < MOTES; i++) {
   motePos[i * 3 + 2] = Math.random() * 90 - 20;
 }
 moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
-const moteMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.17, transparent: true, opacity: 0.7, depthWrite: false });
+const moteMat = new THREE.PointsMaterial({ color: 0xffdba8, size: 0.17, transparent: true, opacity: 0.7, depthWrite: false });
 const motes = new THREE.Points(moteGeo, moteMat);
 motes.frustumCulled = false;
 scene.add(motes);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GATES — few enough to be real meshes, with canvas-texture labels
+// DIP ARCHES — few enough to be real meshes, with canvas-texture labels
 // ─────────────────────────────────────────────────────────────────────────────
 const labelCache = new Map();
-function labelTex(text, good) {
-  const key = text + (good ? '+' : '-');
-  if (labelCache.has(key)) return labelCache.get(key);
-  const c = document.createElement('canvas');
-  c.width = 256; c.height = 128;
-  const g = c.getContext('2d');
-  g.clearRect(0, 0, 256, 128);
-  g.font = 'bold 86px "Segoe UI", system-ui, sans-serif';
+
+/* The label is drawn big and sits ON the curtain, not above it.
+
+   The first version was a 2.4-unit plane floating over the arch with a heavy
+   dark outline, and at the distance you actually read an arch - about
+   twenty-four units, which is the only distance that matters, because by the
+   time it is close you have already committed - it came to roughly fifty
+   pixels of mostly outline. It was legible in a debugger and invisible on a
+   phone. Measure a label at the range the decision is made, not at the range
+   it is convenient to screenshot. */
+function labelTex(text, sub, hex) {
+  const key = text + '|' + sub + '|' + hex;
+  let t = labelCache.get(key);
+  if (t) return t;
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 256;
+  const g = cv.getContext('2d');
+  g.clearRect(0, 0, 512, 256);
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.lineWidth = 14; g.strokeStyle = '#140a06';
-  g.strokeText(text, 128, 68);
-  g.fillStyle = good ? '#eaffe6' : '#ffe0e0';
-  g.fillText(text, 128, 68);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  labelCache.set(key, tex);
-  return tex;
+  g.lineJoin = 'round';
+
+  g.font = '800 132px "Segoe UI",system-ui,sans-serif';
+  g.lineWidth = 14; g.strokeStyle = '#150a04';
+  g.strokeText(text, 256, 88);
+  g.fillStyle = '#fff8e6';
+  g.fillText(text, 256, 88);
+
+  g.font = '800 62px "Segoe UI",system-ui,sans-serif';
+  g.lineWidth = 10;
+  g.strokeText(sub, 256, 190);
+  g.fillStyle = '#' + hex.toString(16).padStart(6, '0');
+  g.fillText(sub, 256, 190);
+
+  t = new THREE.CanvasTexture(cv);
+  t.needsUpdate = true;
+  labelCache.set(key, t);
+  return t;
 }
 
-class GateHalf {
+class ArchHalf {
   constructor() {
     this.group = new THREE.Group();
-    this.panel = new THREE.Mesh(box(T.roadW / 2 - 0.06, 3.0, 0.16),
-      new THREE.MeshBasicMaterial({ color: 0x5ce07a, transparent: true, opacity: 0.34, depthWrite: false }));
-    this.panel.position.y = 1.5;
-    this.frame = new THREE.Mesh(box(T.roadW / 2 - 0.06, 0.26, 0.34), toon(0x5ce07a));
-    this.frame.position.y = 3.08;
-    this.post = new THREE.Mesh(box(0.2, 3.3, 0.3), toon(0x2a1a0e));
-    this.post.position.set(T.roadW / 4 - 0.03, 1.65, 0);
-    this.label = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 1.15),
-      new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));
-    this.label.position.set(0, 1.85, -0.2);
+    /* A curtain of wax rather than a gate: you are dipping the candle, so the
+       thing you pass through should look like a surface of liquid colour.
+
+       Opaque enough to be its own colour. At 0.34 the curtain took most of its
+       brightness from whatever was behind it, so in the dark workshops - the
+       ones where reading the dip matters most, because the whole screen is
+       nearly black - indigo and amber both arrived as the same muddy brown. A
+       gate whose colour is a function of the background is not labelled. */
+    this.sheet = new THREE.Mesh(new THREE.PlaneGeometry(T.roadW / 2 - 0.06, 3.0), new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false,
+    }));
+    this.sheet.position.y = 1.5;
+    this.frame = new THREE.Mesh(box(0.16, 3.2, 0.16), toon(0x3a2a1c));
+    this.frame.position.y = 1.6;
+    /* DoubleSide, and this is the whole reason the label was invisible for a
+       while. A PlaneGeometry faces +z, this camera sits at a *lower* z than
+       everything it looks at, so the player only ever sees a label's back face
+       - and FrontSide culls it. Every property worth inspecting said the label
+       was fine: visible, positioned, textured, renderOrder above the curtain.
+       The fault was in a default nobody set. When something renders as
+       nothing, enumerate what you did *not* configure. */
+    this.label = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 1.65), new THREE.MeshBasicMaterial({
+      transparent: true, depthWrite: false, depthTest: false,
+    }));
+    this.label.position.set(0, 1.85, 0.02);
+    /* Turned to face the camera. A PlaneGeometry faces +z and this camera
+       looks along +z, so an unrotated label shows the player its back - which
+       is culled by FrontSide, and, once that was noticed and papered over with
+       DoubleSide, rendered the text mirrored. Both symptoms, one cause. */
     this.label.rotation.y = Math.PI;
-    this.group.add(this.panel, this.frame, this.post, this.label);
+    this.label.renderOrder = 5;
+    this.group.add(this.sheet, this.frame, this.label);
     this.group.visible = false;
     scene.add(this.group);
   }
-  set(x, z, text, good, showPost) {
-    this.group.position.set(x, 0, z);
+  set(x, z, waxId, amt, leftSide) {
+    const w = WAXES[waxId];
     this.group.visible = true;
-    this.post.visible = !!showPost;   // one divider at the centre, not two overlapping
-    const col = good ? 0x4ce07a : 0xff4d5e;
-    this.panel.material.color.setHex(col);
-    this.frame.material = toon(col);
-    this.label.material.map = labelTex(text, good);
+    this.group.position.set(x, 0, z);
+    this.sheet.material.color.setHex(w.col);
+    this.frame.position.x = leftSide ? -(T.roadW / 4) + 0.08 : (T.roadW / 4) - 0.08;
+    this.label.material.map = labelTex('+' + amt, w.n, w.col);
     this.label.material.needsUpdate = true;
   }
   hide() { this.group.visible = false; }
 }
-const gateHalves = [new GateHalf(), new GateHalf(), new GateHalf(), new GateHalf()];
+const archHalves = [new ArchHalf(), new ArchHalf(), new ArchHalf(), new ArchHalf()];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POOLS
 // ─────────────────────────────────────────────────────────────────────────────
-const loot = [];
-for (let i = 0; i < 300; i++) loot.push({ live: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rot: 0, spin: 0, kind: 0, val: 0, t: 0, col: new THREE.Color() });
-const axes = [];
-for (let i = 0; i < 100; i++) axes.push({ live: false, x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, t: 0, dur: 1, dmg: 0, target: null, rot: 0, col: new THREE.Color() });
 const sparks = [];
-for (let i = 0; i < 90; i++) sparks.push({ live: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, col: new THREE.Color() });
-
-// crew members
-const crewUnits = [];
-for (let i = 0; i < T.visCrew; i++) {
-  crewUnits.push({
-    x: 0, z: 0, tx: 0, tz: 0, phase: Math.random() * 6.28,
-    cloak: new THREE.Color().setHSL(0.02 + Math.random() * 0.10, 0.72, 0.40 + Math.random() * 0.1),
-    beard: new THREE.Color().setHSL(0.07 + Math.random() * 0.04, 0.5, 0.35 + Math.random() * 0.2),
-    shield: new THREE.Color().setHSL(Math.random(), 0.42, 0.44),
-  });
-}
+for (let i = 0; i < 110; i++) sparks.push({ live: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, col: new THREE.Color() });
 
 // entity lists, rebuilt per run
-let enemies = [], crates = [], shrines = [], gates = [], scenery = [];
-let boss = null;
+let drips = [], blades = [], lamps = [], pools = [], flasks = [], arches = [], scenery = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RUN STATE
 // ─────────────────────────────────────────────────────────────────────────────
 const run = {
-  active: false, z: 0, x: 0, targetX: 0, crew: 3, dist: 0,
-  gold: 0, iron: 0, runes: 0, forgeTier: 0, forgeFill: 0,
-  atkTimer: 0, chunkSpawned: -1, palette: 0, scale: 1,
-  shake: 0, hitStop: 0, time: 0, over: false, bossPhase: false,
-  lastChunkWindow: -999,
+  active: false, z: 0, x: 0, targetX: 0,
+  candle: CD.newCandle(T.coreWax),
+  wick: 0, wickMax: 1, lit: true, snuffTimer: 0,
+  inHeat: 0,            // seconds of continuous heat, for the sizzle and tint
+  chunkSpawned: -1, workshop: 0, scale: 1, time: 0,
+  shake: 0, hitStop: 0, over: false, bench: false, benchZ: 0,
+  spin: 0, lastChunkWindow: -999, dipped: 0, shaved: 0, scentsFound: 0,
 };
+let lastAppraisal = null;
 
 let hintTimer = 0;
 
 /* Every random draw that can change the outcome of a run comes from here, not
-   Math.random - loot scatter and axe flight time, both of which decide *when*
-   something lands. Purely cosmetic jitter (crew colours, dust motes, camera
-   shake, the enemies' walk phase) is still Math.random and should stay that
-   way; seeding it would buy nothing and cost a stream that no longer lines up
-   between a run with particles and a run without.
+   Math.random. Purely cosmetic jitter - spark scatter, dust motes, camera
+   shake, the flame flicker and the candle's idle spin - is still Math.random
+   and should stay that way.
 
-   Reseeded per ascent in startAscent, so an ascent replays exactly. */
+   The trap is that "cosmetic" is not obvious, and this game has a sharper
+   version of it than the last one: a droplet's position decides when it comes
+   within magnet reach, which decides how much wax is on the candle when it
+   meets the next blade. Anything that decides *when* is simulation. */
 let rnd = makeRng(1);
 
-function startAscent() {
-  rnd = makeRng(1000 + S.ascent);
-  run.active = true; run.over = false; run.bossPhase = false;
+function startLevel() {
+  rnd = makeRng(1000 + S.level);
+  run.active = true; run.over = false; run.bench = false;
   run.z = 0; run.x = 0; run.targetX = 0;
-  run.crew = clamp(startCrew(), 1, maxCrew());
-  run.gold = 0; run.iron = 0; run.runes = 0;
-  run.forgeTier = 0; run.forgeFill = 0;
-  run.atkTimer = 0; run.chunkSpawned = -1; run.time = 0;
-  run.scale = scaleFor(S.ascent);
-  run.palette = (S.ascent - 1) % PALETTES.length;
+  run.candle = CD.newCandle(startWax());
+  run.wickMax = wickLen();
+  run.wick = run.wickMax;
+  run.lit = true; run.snuffTimer = 0; run.inHeat = 0;
+  run.chunkSpawned = -1; run.time = 0; run.spin = 0;
+  run.dipped = 0; run.shaved = 0; run.scentsFound = 0;
+  run.scale = scaleFor(S.level);
+  run.workshop = (S.level - 1) % WORKSHOPS.length;
   run.lastChunkWindow = -999;
-  enemies.length = 0; crates.length = 0; shrines.length = 0; gates.length = 0;
-  boss = null;
-  for (const l of loot) l.live = false;
-  for (const a of axes) a.live = false;
+  run.benchZ = T.levelChunks * T.chunk + 10;
+  drips.length = 0; blades.length = 0; lamps.length = 0;
+  pools.length = 0; flasks.length = 0; arches.length = 0;
   for (const s of sparks) s.live = false;
-  for (let i = 0; i < crewUnits.length; i++) { crewUnits[i].x = 0; crewUnits[i].z = 0; }
-  applyPalette(PALETTES[run.palette]);
-  hintTimer = S.seenCamp ? 0 : 4.5;
+  applyWorkshop(WORKSHOPS[run.workshop]);
+  hintTimer = S.seenShop ? 0 : 4.5;
   hintEl.style.opacity = hintTimer > 0 ? '0.95' : '0';
-  campEl.classList.add('hidden');
-  progWrap.classList.remove('boss');
-  progLabel.textContent = 'TO THE JOTUNN';
-  toast(PALETTES[run.palette].name, 1.2);
+  shopScreenEl.classList.add('hidden');
+  progLabel.textContent = 'TO THE BENCH';
+  toast(WORKSHOPS[run.workshop].name, 1.4);
+  lastHud = {};
   syncHUD();
 }
 
-function applyPalette(p) {
-  host.style.background = `linear-gradient(180deg, ${p.sky[0]} 0%, ${p.sky[1]} 62%, ${p.sky[1]} 100%)`;
+function applyWorkshop(p) {
+  host.style.background = `linear-gradient(180deg, ${p.sky[0]} 0%, ${p.sky[1]} 58%, ${p.sky[1]} 100%)`;
   scene.fog.color.setHex(p.fog);
+  amb.intensity = TU.ambientFor(S.level);
+  /* The directional falls with the ambient, or a dark workshop still has a
+     bright key light raking across it and reads as night-for-day. */
+  sun.intensity = 0.38 + amb.intensity * 1.25;
+  hemi.intensity = 0.14 + amb.intensity * 0.42;
   road.material = toon(p.road);
   kerbL.material = toon(p.kerb); kerbR.material = toon(p.kerb);
   ground.material = toon(p.ground);
-  W.tree.mesh.material = toon(p.tree);
-  W.trunk.mesh.material = toon(p.tree2);
-  W.rock.mesh.material = toon(p.rock);
-  W.mount.mesh.material = toon(p.mount);
+  W.taper.mesh.material = toon(p.prop);
+  W.block.mesh.material = toon(p.prop2);
+  W.far.mesh.material = toon(p.far);
   W.step.mesh.material = toon(p.kerb);
   moteMat.color.setHex(p.dust);
-  document.querySelector('meta[name=theme-color]').setAttribute('content', p.sky[0]);
+  document.querySelector('meta[name=theme-color]').setAttribute('content', p.sky[1]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SPAWNING — seeded per chunk, so an ascent layout is reproducible
+// SPAWNING — seeded per chunk, so a level layout is reproducible
 // ─────────────────────────────────────────────────────────────────────────────
+
+/* Which two waxes an arch offers, and how much of each.
+
+   Always two *upside* options, never a good side and a bad side, because which
+   one is better genuinely depends on the candle you are currently wearing: a
+   big dip of the colour you already have outside just fattens a ring, while a
+   small dip of something that contrasts with it earns a multiplier. CRAFT.md's
+   "two upside gates beat a good gate and a bad gate" - the punishing version
+   lives in the traps, where it belongs. */
+function spawnArch(z, c) {
+  const pal = WORKSHOPS[run.workshop].waxes;
+  const i = Math.floor(hash(c, 210 + S.level) * pal.length) % pal.length;
+  let j = Math.floor(hash(c, 340 + S.level) * (pal.length - 1)) % (pal.length - 1);
+  if (j >= i) j++;                                    // never the same wax twice
+  let a = { wax: pal[i], amt: Math.round(T.vatWaxBig) };
+  let b = { wax: pal[j], amt: Math.round(T.vatWaxBase) };
+  /* The bigger side is not always the same side, and it is not always the
+     cheaper wax either. Both were bugs in the previous game caused by a hash
+     that could never exceed a half. */
+  if (hash(c, 455 + S.level) > 0.5) { const t = a; a = b; b = t; }
+  arches.push({ z, taken: false, left: a, right: b });
+}
+
 function spawnChunk(c) {
   const z = c * T.chunk;
-  if (c === T.ascentChunks) { spawnBoss(z + 14); return; }
-  if (c > T.ascentChunks || c < 3) return;
+  if (c > T.levelChunks || c < 2) return;
 
-  // gates on a fixed cadence — the decision beat of the run
-  if (c === 4 || c === 11 || c === 19 || c === 27 || c === 35) { spawnGate(z + 6); return; }
+  /* Arches on a fixed cadence: they are the decision beat of the run and a
+     player has to be able to feel them coming. */
+  if (c % 6 === 4) { spawnArch(z + 6, c); return; }
 
-  const r = hash(c, 91 + S.ascent);
-  const r2 = hash(c, 402 + S.ascent);
-  const r3 = hash(c, 777 + S.ascent);
+  const r1 = hash(c, 91 + S.level);
+  const r2 = hash(c, 402 + S.level);
+  const r3 = hash(c, 777 + S.level);
+  const r4 = hash(c, 913 + S.level);
 
-  // enemies
-  const density = clamp(0.16 + c * 0.013, 0, 0.72);
-  if (c >= 6 && r < density) {
-    const n = 1 + Math.floor(r2 * (c > 24 ? 5 : 3));
+  /* The droplet line is decided before the blades are placed, so a blade can
+     be planted on it. That is the only place in the level where the wax and
+     the danger are in the same spot, and it is what turns steering from
+     "avoid things" into a decision worth making. */
+  const hasDrips = r4 < T.dripChance;
+  const dripCx = TU.laneX(hash(c, 905));
+  const guarded = hasDrips && hash(c, 907 + S.level) < T.guardedDrips;
+
+  /* Hazard density climbs with the chunk and with the workshop, and the three
+     hazards are drawn independently so a chunk can hold more than one. */
+  const dens = clamp(0.55 + c * 0.014, 0, 1.35) * clamp(0.8 + S.level * 0.08, 0, 1.6);
+
+  if (c >= 3 && r1 < T.bladeChance * dens) {
+    const n = 1 + Math.floor(hash(c, 120) * 2.4);
     for (let i = 0; i < n; i++) {
-      const brute = c > 12 && hash(c, 1000 + i) > 1 - T.bruteChance;
-      enemies.push(makeEnemy(
-        (hash(c, 300 + i) - 0.5) * (T.roadW - 1.4),
-        z + 2 + i * 2.6 + hash(c, 500 + i) * 3,
-        brute, c));
-    }
-  }
-  // crates
-  if (r2 < 0.42) {
-    const n = 1 + Math.floor(r3 * 3);
-    for (let i = 0; i < n; i++) {
-      crates.push({
-        x: (hash(c, 700 + i) - 0.5) * (T.roadW - 1.6),
-        z: z + 3 + i * 2.2, hp: 1, spin: hash(c, 800 + i) * 6.28, bob: hash(c, 810 + i) * 6.28,
+      blades.push({
+        x: (i === 0 && guarded) ? dripCx : TU.laneX(hash(c, 300 + i)),
+        z: z + 2 + i * 3.4 + hash(c, 500 + i) * 2,
+        spin: hash(c, 610 + i) * 6.28, hit: false,
       });
     }
   }
-  // rune shrine
-  if (r3 < 0.10 && c > 6) {
-    shrines.push({ x: (hash(c, 900) - 0.5) * (T.roadW - 1.8), z: z + 6, spin: 0, taken: false });
+  if (c >= 5 && r2 < T.lampChance * dens) {
+    lamps.push({
+      x: TU.laneX(hash(c, 700)),
+      z: z + 5 + hash(c, 705) * 3, r: 1.45,
+    });
   }
-}
-
-function makeEnemy(x, z, brute, chunk) {
-  const hp = (brute ? T.bruteHP : T.gruntHP) * run.scale * (1 + chunk * 0.14);
-  return {
-    x, z, hp, maxhp: hp, brute, boss: false,
-    scale: brute ? 1.35 : 1.0, phase: Math.random() * 6.28,
-    power: brute ? 2 : 1, gold: (brute ? T.bruteGold : T.gruntGold) * run.scale,
-    hurt: 0, dead: false, tint: brute ? 0x7a5f8c : 0x5a6b7a,
-  };
-}
-
-function spawnBoss(z) {
-  const hp = T.bossHP * run.scale;
-  boss = {
-    x: 0, z, hp, maxhp: hp, brute: true, boss: true, scale: 3.3,
-    phase: 0, power: 2, gold: 90 * run.scale, hurt: 0, dead: false,
-    slam: 3.4, tint: 0x4a7fa8, armed: false,
-  };
-  enemies.push(boss);
-}
-function armBoss() {
-  boss.armed = true;
-  run.bossPhase = true;
-  progWrap.classList.add('boss');
-  progLabel.textContent = 'JOTUNN';
-  toast('JOTUNN', 1.5);
-  sfx.horn();
-  shake(0.6);
-}
-
-function spawnGate(z) {
-  const r = hash(z | 0, 55 + S.ascent);
-  const punish = r > 1 - T.punishGateChance;
-  const add = 3 + Math.floor(hash(z | 0, 66) * 6);
-  let a, b;
-  if (punish) {
-    a = { op: 'mul', v: 2, text: '×2', good: true };
-    b = { op: 'sub', v: 2 + Math.floor(hash(z | 0, 77) * 4), good: false };
-    b.text = '−' + b.v;
-  } else {
-    a = { op: 'add', v: add, text: '+' + add, good: true };
-    b = { op: 'mul', v: 2, text: '×2', good: true };
+  if (c >= 7 && r3 < T.waterChance * dens) {
+    pools.push({
+      x: TU.laneX(hash(c, 800)),
+      z: z + 4 + hash(c, 805) * 4, r: 1.25, used: false,
+    });
   }
-  if (hash(z | 0, 88) > 0.5) { const t = a; a = b; b = t; }
-  gates.push({ z, taken: false, left: a, right: b });
+
+  /* Droplets, the steady income. Placed in a short arc across the road so
+     collecting a line of them is a steering line rather than a single point. */
+  if (hasDrips) {
+    const n = 2 + Math.floor(hash(c, 900) * 3);
+    const cx = dripCx;
+    const sweep = (hash(c, 910) - 0.5) * 2.4;
+    for (let i = 0; i < n; i++) {
+      const t = n > 1 ? i / (n - 1) : 0.5;
+      drips.push({
+        x: clamp(cx + sweep * (t - 0.5) * 2, -T.laneClamp, T.laneClamp),
+        z: z + 2 + t * 7.5,
+        bob: hash(c, 920 + i) * 6.28, taken: false,
+      });
+    }
+  }
+
+  /* A scent flask, and it is always placed inside a hazard.
+
+     "Gate an upgrade behind a place, not a price" - the strongest version of
+     that rule is when reaching the thing costs you the thing it protects you
+     from. Every flask sits on top of a blade or in a heat lamp, so the only
+     way to a permanent perk is through the hazard it answers. It is also the
+     only reward in the game that can be missed forever, which is what makes it
+     worth looking for rather than something you will pick up eventually. */
+  if (c >= 6 && hash(c, 5000 + S.level) < T.scentChance) {
+    const missing = [];
+    for (let i = 0; i < SCENTS.length; i++) if (S.scents.indexOf(i) < 0) missing.push(i);
+    if (missing.length) {
+      const id = missing[Math.floor(hash(c, 5100 + S.level) * missing.length) % missing.length];
+      const host = blades.length ? blades[blades.length - 1] : (lamps.length ? lamps[lamps.length - 1] : null);
+      flasks.push({
+        x: host ? host.x : TU.laneX(hash(c, 5200)),
+        z: host ? host.z : z + 6,
+        id, spin: 0, taken: false,
+      });
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOOT / FX
+// FX
 // ─────────────────────────────────────────────────────────────────────────────
-let lootCursor = 0;
-function burst(x, y, z, n, kind, total) {
-  const per = total / n;
-  for (let i = 0; i < n; i++) {
-    const p = loot[lootCursor];
-    lootCursor = (lootCursor + 1) % loot.length;
-    p.live = true; p.x = x; p.y = y; p.z = z;
-    /* Seeded, not Math.random: velocity decides when a coin comes within
-       magnet reach, which decides when its gold lands. See makeRng. */
-    const a = rnd() * 6.283, s = 1.6 + rnd() * 3.4;
-    p.vx = Math.cos(a) * s * 0.55; p.vz = Math.sin(a) * s * 0.55 - 1.5;
-    p.vy = 4.2 + rnd() * 4.4;
-    p.rot = rnd() * 6.28; p.spin = (rnd() - 0.5) * 14;
-    p.kind = kind; p.val = per; p.t = 0;
-    if (kind === 0) p.col.setHSL(0.11, 0.95, 0.52 + rnd() * 0.12);
-    else if (kind === 1) p.col.setHSL(0.56, 0.75, 0.62 + rnd() * 0.1);
-    else p.col.setHSL(0.76, 0.8, 0.62);
-  }
-}
 let sparkCursor = 0;
 function sparkle(x, y, z, n, hex) {
   for (let i = 0; i < n; i++) {
     const s = sparks[sparkCursor];
     sparkCursor = (sparkCursor + 1) % sparks.length;
     s.live = true; s.x = x; s.y = y; s.z = z;
-    s.vx = (Math.random() - 0.5) * 7; s.vy = 1 + Math.random() * 6; s.vz = (Math.random() - 0.5) * 7;
+    s.vx = (Math.random() - 0.5) * 6; s.vy = 1 + Math.random() * 5.5; s.vz = (Math.random() - 0.5) * 6;
     s.t = 0; s.col.setHex(hex);
   }
 }
@@ -415,60 +510,66 @@ function shake(v) { run.shake = Math.min(1.2, run.shake + v); }
 function hitStop(ms) { run.hitStop = Math.max(run.hitStop, ms / 1000); }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUDIO — see sfx.ts. Built on the first gesture; the theme drops an octave in
-// the boss phase, which is why it needs to read the run rather than be told.
+// AUDIO — see sfx.ts. Built on the first gesture; the theme drops an octave
+// while the wick is out, which is why it reads the run rather than being told.
 // ─────────────────────────────────────────────────────────────────────────────
-const sfx = createSfx({ isBossPhase: () => run.bossPhase });
+const sfx = createSfx({ isDark: () => !run.lit });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HUD
 // ─────────────────────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
-const hudGold = $('gold'), hudIron = $('iron'), hudRune = $('rune'), hudCrew = $('crewN');
-const hudDps = $('dps'), hudWName = $('wName'), wBlade = $('wblade');
-const progWrap = $('progWrap'), progFill = $('prog').firstElementChild, progLabel = $('prog').lastElementChild;
-const forgeFill = $('forge').firstElementChild, forgeLabel = $('forge').lastElementChild;
-const ascentEl = $('ascent'), toastEl = $('toast'), hintEl = $('hint');
-const campEl = $('camp'), shopEl = $('shop'), flashEl = $('flash'), vigEl = $('vig');
+const hudCoins = $('coins'), hudWax = $('waxN'), hudGrade = $('gradeN');
+const stackEl = $('stack');
+const progFill = $('prog').firstElementChild, progLabel = $('prog').lastElementChild;
+const wickFill = $('wick').firstElementChild, wickLabel = $('wick').lastElementChild;
+const levelEl = $('level'), toastEl = $('toast'), hintEl = $('hint');
+const shopScreenEl = $('shopScreen'), shopEl = $('shop'), flashEl = $('flash'), vigEl = $('vig');
+const darkEl = $('dark');
 
 let toastT = 0;
 function toast(msg, dur) { toastEl.textContent = msg; toastEl.style.opacity = '1'; toastT = dur || 1.1; }
 
 let lastHud = {};
 function syncHUD() {
-  const g = Math.floor(run.gold), i = Math.floor(run.iron), r = Math.floor(run.runes);
-  if (lastHud.g !== g) { hudGold.textContent = fmt(g); lastHud.g = g; }
-  if (lastHud.i !== i) { hudIron.textContent = fmt(i); lastHud.i = i; }
-  if (lastHud.r !== r) { hudRune.textContent = fmt(r); lastHud.r = r; }
-  if (lastHud.c !== run.crew) {
-    hudCrew.textContent = run.crew;
-    // gold when the warband is full, so "CREW FULL +gold" is never a surprise
-    hudCrew.style.color = run.crew >= maxCrew() ? '#ffc93c' : '#fff';
-    lastHud.c = run.crew;
+  const wax = Math.round(CD.totalWax(run.candle));
+  if (lastHud.w !== wax) { hudWax.textContent = wax; lastHud.w = wax; }
+  if (lastHud.c !== S.coins) { hudCoins.textContent = fmt(S.coins); lastHud.c = S.coins; }
+  if (lastHud.l !== S.level) { levelEl.innerHTML = S.level + '<small>WORKSHOP</small>'; lastHud.l = S.level; }
+
+  /* The running grade. A results screen at the end is a verdict; a grade that
+     moves while you play is a thing you can steer by, and it is the only way
+     the contrast bonus is legible before the run is over. */
+  const g = appraise(run.candle, { delivered: true, valueMul: valueMul(), priceMul: priceMul() });
+  if (lastHud.g !== g.grade) { hudGrade.textContent = g.grade; lastHud.g = g.grade; }
+
+  /* The layer stack, mirrored as chips. This is the HUD saying exactly what
+     the candle says, which is the point: the player should be able to read
+     either one and never need the other. */
+  const sig = run.candle.map((l) => l.wax + ':' + Math.round(l.amt)).join(',');
+  if (lastHud.s !== sig) {
+    let html = '';
+    for (let i = run.candle.length - 1; i >= 0; i--) {
+      const l = run.candle[i];
+      const h = clamp(4 + l.amt * 0.9, 5, 22);
+      html += `<i style="background:#${WAXES[l.wax].col.toString(16).padStart(6, '0')};height:${h.toFixed(0)}px"></i>`;
+    }
+    stackEl.innerHTML = html;
+    lastHud.s = sig;
   }
-  const d = Math.floor(squadDPS());
-  if (lastHud.d !== d) { hudDps.textContent = fmt(d); lastHud.d = d; }
-  const t = weaponTier();
-  if (lastHud.t !== t) {
-    hudWName.textContent = TIERS[t].n;
-    wBlade.setAttribute('fill', '#' + TIERS[t].c.toString(16).padStart(6, '0'));
-    lastHud.t = t;
+
+  const wpct = Math.round(clamp(run.wick / run.wickMax, 0, 1) * 100);
+  if (lastHud.k !== wpct) {
+    wickFill.style.width = wpct + '%';
+    wickLabel.textContent = 'WICK ' + Math.ceil(run.wick) + 's';
+    /* Colour, not just length: a bar that is only shrinking is something you
+       notice after it matters. */
+    wickFill.style.background = wpct < 20 ? 'linear-gradient(#ff8a8a,#c01f30)'
+      : wpct < 45 ? 'linear-gradient(#ffd36a,#e08a10)' : 'linear-gradient(#ffe6a8,#e0a040)';
+    lastHud.k = wpct;
   }
-  if (lastHud.a !== S.ascent) { ascentEl.innerHTML = S.ascent + '<small>ASCENT</small>'; lastHud.a = S.ascent; }
-  const need = forgeNeed();
-  const fpct = Math.round(clamp(run.iron / need, 0, 1) * 100);
-  if (lastHud.f !== fpct) {
-    forgeFill.style.width = fpct + '%';
-    forgeLabel.textContent = 'FORGE ' + Math.floor(run.iron) + '/' + Math.ceil(need);
-    lastHud.f = fpct;
-  }
-  if (run.bossPhase && boss) {
-    progFill.style.width = clamp(boss.hp / boss.maxhp, 0, 1) * 100 + '%';
-  } else {
-    progFill.style.width = clamp(run.z / (T.ascentChunks * T.chunk), 0, 1) * 100 + '%';
-  }
+  progFill.style.width = clamp(run.z / run.benchZ, 0, 1) * 100 + '%';
 }
-function forgeNeed() { return T.forgeBase * Math.pow(T.forgeGrowth, run.forgeTier) * run.scale; }
 
 // floating numbers
 const popPool = [];
@@ -490,45 +591,56 @@ function pop(text, color, x, y, z) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CAMP (the shop is a place, not a list)
+// THE WORKSHOP (the shop is a place, not a list)
 // ─────────────────────────────────────────────────────────────────────────────
 const UPGRADES = [
-  { g: 'THE FORGE', id: 'weapon', ic: '🪓', name: () => 'Forge: ' + TIERS[clamp(S.up.weapon + 1, 0, 8)].n,
-    eff: () => 'Permanent axe tier — ×' + T.tierMul.toFixed(2) + ' damage',
-    cost: () => Math.round(80 * Math.pow(2.35, S.up.weapon)), cur: 'gold', max: 8, unlock: 1 },
-  { g: 'THE FORGE', id: 'whet', ic: '🪨', name: () => 'Whetstone', eff: () => '+8% damage  (now +' + (S.up.whet * 8) + '%)',
-    cost: () => Math.round(40 * Math.pow(1.8, S.up.whet)), cur: 'gold', max: 12, unlock: 1 },
+  { g: 'THE VAT', id: 'core', ic: '🕯️', name: () => 'Thicker Core',
+    eff: () => 'Start every candle with ' + (startWax() + 3) + ' wax',
+    cost: () => Math.round(70 * Math.pow(2.05, S.up.core)), max: 8, unlock: 1 },
+  { g: 'THE VAT', id: 'mould', ic: '🧊', name: () => 'Deeper Mould',
+    eff: () => 'Hold ' + (maxLayers() + 1) + ' layers before they merge',
+    cost: () => Math.round(260 * Math.pow(2.6, S.up.mould)), max: 5, unlock: 2 },
 
-  { g: 'THE LONGHOUSE', id: 'warband', ic: '🛡️', name: () => 'Warband', eff: () => 'Start with ' + (startCrew() + 1) + ' crew',
-    cost: () => Math.round(140 * Math.pow(2.2, S.up.warband)), cur: 'gold', max: 6, unlock: 1 },
-  { g: 'THE LONGHOUSE', id: 'mead', ic: '🍺', name: () => 'Mead Hall', eff: () => 'Crew limit ' + (maxCrew() + 2),
-    cost: () => Math.round(180 * Math.pow(2.3, S.up.mead)), cur: 'gold', max: 7, unlock: 1 },
+  /* Every effect line names what the NEXT level buys, not what the current one
+     already did. "now -0%" on an unbought upgrade is a shop telling the player
+     about nothing. */
+  { g: 'THE BENCH', id: 'hard', ic: '🛡️', name: () => 'Hardened Wax',
+    eff: () => 'Blades take −' + Math.round((1 - Math.pow(0.88, S.up.hard + 1)) * 100) +
+               '%, heat −' + Math.round((1 - Math.pow(0.92, S.up.hard + 1)) * 100) + '%',
+    cost: () => Math.round(95 * Math.pow(1.9, S.up.hard)), max: 10, unlock: 1 },
+  { g: 'THE BENCH', id: 'hand', ic: '🤚', name: () => 'Steady Hand',
+    eff: () => 'Knocks bend the candle −' + Math.round((1 - Math.pow(0.86, S.up.hand + 1)) * 100) + '%',
+    cost: () => Math.round(120 * Math.pow(2.0, S.up.hand)), max: 8, unlock: 2 },
+  { g: 'THE BENCH', id: 'wick', ic: '🧵', name: () => 'Longer Wick',
+    eff: () => 'Burns ' + Math.round(TU.wickLength({ ...S.up, wick: S.up.wick + 1 }, S.scents)) +
+               's, up from ' + Math.round(wickLen()) + 's',
+    cost: () => Math.round(110 * Math.pow(1.95, S.up.wick)), max: 10, unlock: 1 },
 
-  { g: 'THE TRAIL', id: 'boots', ic: '🥾', name: () => 'Iron Boots', eff: () => '+6% run speed  (now +' + (S.up.boots * 6) + '%)',
-    cost: () => Math.round(120 * Math.pow(1.95, S.up.boots)), cur: 'gold', max: 8, unlock: 2 },
-  { g: 'THE TRAIL', id: 'lode', ic: '🧲', name: () => 'Lodestone', eff: () => '+25% pickup reach',
-    cost: () => Math.round(150 * Math.pow(2.0, S.up.lode)), cur: 'gold', max: 6, unlock: 2 },
-
-  { g: 'THE RUNESTONE', id: 'thor', ic: '⚡', name: () => 'Blessing of Thor', eff: () => '+10% damage, forever',
-    cost: () => Math.round(3 * Math.pow(1.75, S.up.thor)), cur: 'runes', max: 6, unlock: 4 },
-  { g: 'THE RUNESTONE', id: 'freyja', ic: '🌾', name: () => 'Blessing of Freyja', eff: () => '+12% gold, forever',
-    cost: () => Math.round(3 * Math.pow(1.75, S.up.freyja)), cur: 'runes', max: 6, unlock: 4 },
-  { g: 'THE RUNESTONE', id: 'odin', ic: '👁️', name: () => 'Blessing of Odin', eff: () => 'Begin every ascent one axe tier higher',
-    cost: () => Math.round(6 * Math.pow(2.4, S.up.odin)), cur: 'runes', max: 3, unlock: 6 },
+  { g: 'THE DIPPING ROOM', id: 'scoop', ic: '🥄', name: () => 'Wider Scoop',
+    eff: () => 'Reach further for droplets, and carry more per drop',
+    cost: () => Math.round(130 * Math.pow(2.05, S.up.scoop)), max: 8, unlock: 2 },
+  { g: 'THE DIPPING ROOM', id: 'dye', ic: '🎨', name: () => 'Fine Dyes',
+    eff: () => 'Every candle appraises +' + Math.round((S.up.dye + 1) * 9) + '% higher',
+    cost: () => Math.round(180 * Math.pow(2.2, S.up.dye)), max: 10, unlock: 3 },
+  { g: 'THE DIPPING ROOM', id: 'bees', ic: '🍯', name: () => 'Beeswax Blend',
+    eff: () => 'Every candle appraises +' + Math.round((S.up.bees + 1) * 13) + '% higher',
+    cost: () => Math.round(320 * Math.pow(2.45, S.up.bees)), max: 8, unlock: 4 },
 ];
 
-function openCamp(title, sub) {
-  $('campTitle').textContent = title;
-  $('campSub').textContent = sub;
+function openShop(title, sub) {
+  $('shopTitle').textContent = title;
+  $('shopSub').textContent = sub;
   renderShop();
+  renderScents();
   showBuildInfo();
-  campEl.classList.remove('hidden');
-  S.seenCamp = true;
+  shopScreenEl.classList.remove('hidden');
+  S.seenShop = true;
   save();
 }
+
 function renderShop() {
-  $('cGold').textContent = fmt(S.gold);
-  $('cRune').textContent = fmt(S.runes);
+  $('sCoins').textContent = fmt(S.coins);
+  $('sBest').textContent = fmt(S.bestValue);
   let html = '';
   let group = '';
   for (const u of UPGRADES) {
@@ -537,17 +649,15 @@ function renderShop() {
     const locked = S.best < u.unlock;
     const maxed = lvl >= u.max;
     const cost = u.cost();
-    const bal = u.cur === 'gold' ? S.gold : S.runes;
-    const afford = bal >= cost && !maxed && !locked;
-    const pip = u.cur === 'gold' ? 'g' : 'r';
+    const afford = S.coins >= cost && !maxed && !locked;
     let btn;
-    if (locked) btn = `<span class="lockmsg">ASCENT ${u.unlock}</span>`;
+    if (locked) btn = `<span class="lockmsg">WORKSHOP ${u.unlock}</span>`;
     else if (maxed) btn = `<button class="buy max" disabled>MAX</button>`;
-    else btn = `<button class="buy ${afford ? '' : 'no'}" data-buy="${u.id}"><i class="pip ${pip}" style="display:inline-block;vertical-align:-2px;margin-right:4px"></i>${fmt(cost)}</button>`;
+    else btn = `<button class="buy ${afford ? '' : 'no'}" data-buy="${u.id}"><i class="pip g" style="display:inline-block;vertical-align:-2px;margin-right:4px"></i>${fmt(cost)}</button>`;
     html += `<div class="up ${locked ? 'locked' : ''}">
       <div class="upic">${u.ic}</div>
       <div class="upinfo"><div class="upname out">${locked ? '???' : u.name()}</div>
-      <div class="upeff">${locked ? 'Sealed until you reach Ascent ' + u.unlock : u.eff() + '   ·  Lv ' + lvl + '/' + u.max}</div></div>
+      <div class="upeff">${locked ? 'Sealed until Workshop ' + u.unlock : u.eff() + '   ·  Lv ' + lvl + '/' + u.max}</div></div>
       ${btn}</div>`;
   }
   html += '</div>';
@@ -556,30 +666,48 @@ function renderShop() {
     b.addEventListener('click', () => buy(b.getAttribute('data-buy')));
   });
 }
+
+/* The shelf is a place to look at what you have, and - just as importantly -
+   at the gaps. An empty slot that says where the scent is found is a reason to
+   go back to a workshop you have already beaten; a hidden one is nothing at
+   all, which is the same argument as showing a sealed shop row. */
+function renderScents() {
+  let html = '';
+  for (let i = 0; i < SCENTS.length; i++) {
+    const got = S.scents.indexOf(i) >= 0;
+    html += `<div class="scent ${got ? '' : 'miss'}">
+      <div class="sic">${got ? SCENTS[i].ic : '?'}</div>
+      <div><div class="sname out">${got ? SCENTS[i].n : 'UNDISCOVERED'}</div>
+      <div class="seff">${got ? SCENTS[i].eff : 'Found in the world, never sold'}</div></div></div>`;
+  }
+  $('scents').innerHTML = html;
+  $('scentCount').textContent = S.scents.length + '/' + SCENTS.length;
+}
+
 function buy(id) {
   const u = UPGRADES.find((x) => x.id === id);
   if (!u) return;
-  const lvl = S.up[id];
-  if (lvl >= u.max || S.best < u.unlock) return;
+  if (S.up[id] >= u.max || S.best < u.unlock) return;
   const cost = u.cost();
-  if (u.cur === 'gold') { if (S.gold < cost) { sfx.hurt(); return; } S.gold -= cost; }
-  else { if (S.runes < cost) { sfx.hurt(); return; } S.runes -= cost; }
+  if (S.coins < cost) { sfx.sell(false); return; }
+  S.coins -= cost;
   S.up[id]++;
-  sfx.forge();
+  sfx.relight();
   save();
   renderShop();
   lastHud = {};
   syncHUD();
 }
+
 $('btnGo').addEventListener('click', () => {
   sfx.init();
-  campEl.classList.add('hidden');
-  startAscent();
+  shopScreenEl.classList.add('hidden');
+  startLevel();
 });
 
 // ── version, patch notes and build stamp ─────────────────────────────────────
 // Rendered once: a changelog does not change while the game is running, and
-// rebuilding it every time the camp opens is pure churn.
+// rebuilding it every time the shop opens is pure churn.
 let notesBuilt = false;
 function showBuildInfo() {
   $('verNum').textContent = 'v' + VERSION;
@@ -605,26 +733,56 @@ function showBuildInfo() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RUN END
+// RUN END — the appraisal
 // ─────────────────────────────────────────────────────────────────────────────
-function finishAscent(won) {
+function finishRun(delivered) {
+  if (run.over) return;
   run.active = false; run.over = true;
-  const keep = won ? 1 : T.deathKeep;
-  const earned = Math.floor(run.gold * keep + run.iron * 2 * keep);
-  S.gold += earned;
-  S.runes += Math.floor(run.runes * keep);
-  if (won) {
-    S.ascent++;
-    S.best = Math.max(S.best, S.ascent);
-    sfx.boom();
-    flash(0.75);
+  const a = appraise(run.candle, { delivered, valueMul: valueMul(), priceMul: priceMul() });
+  lastAppraisal = a;
+  S.coins += a.value;
+  S.bestValue = Math.max(S.bestValue, a.value);
+
+  /* Reaching the bench advances the workshop; guttering out does not. That is
+     the only gate on progression in the game, and it is a soft one - you keep
+     the coins either way, so a failed run still buys the upgrade that fixes
+     the reason it failed. */
+  if (delivered) {
+    S.level++;
+    S.best = Math.max(S.best, S.level);
   }
   save();
+  sfx.sell(delivered);
+  if (delivered) flash(0.5);
+
   setTimeout(() => {
-    openCamp(won ? 'MOUNTAIN CAMP' : 'CARRIED HOME',
-      won ? `ASCENT ${S.ascent - 1} CLEARED  ·  +${fmt(earned)} GOLD`
-          : `THE CREW FELL  ·  KEPT ${Math.round(keep * 100)}%  ·  +${fmt(earned)} GOLD`);
-  }, won ? 900 : 700);
+    renderAppraisal(a, delivered);
+    openShop(delivered ? 'THE CHANDLERY' : 'GUTTERED OUT',
+      delivered ? `WORKSHOP ${S.level - 1} SOLD` : 'THE WICK WENT FIRST');
+  }, delivered ? 1500 : 900);
+}
+
+/* The results panel names each part and what earned it.
+
+   CRAFT.md: a number beats a bar when the player needs to understand
+   causation. Four labelled lines is the difference between "I got 840" and "I
+   got 840 because I only managed two colours", and the second is the one that
+   changes how the next run is played. */
+function renderAppraisal(a, delivered) {
+  const rows = [
+    ['WAX', Math.round(a.wax) + ' units', Math.round(a.bulk) + 'c'],
+    ['LAYERS', a.colours + ' colour' + (a.colours === 1 ? '' : 's'), '×' + (1 + a.layerMul).toFixed(2)],
+    ['CONTRAST', a.pairs + ' pair' + (a.pairs === 1 ? '' : 's'), '×' + (1 + a.contrastMul).toFixed(2)],
+    ['TRUE', Math.round(a.purity * 100) + '% straight', '×' + a.purity.toFixed(2)],
+  ];
+  if (!delivered) rows.push(['UNFINISHED', 'the wick guttered', '×' + a.delivered.toFixed(2)]);
+  $('apGrade').textContent = a.grade;
+  $('apGrade').className = 'apgrade out g' + a.grade.charAt(0);
+  $('apRows').innerHTML = rows.map((r) =>
+    `<div class="aprow"><span class="apk">${r[0]}</span><span class="apd">${r[1]}</span><span class="apv">${r[2]}</span></div>`
+  ).join('');
+  $('apTotal').textContent = fmt(a.value);
+  $('appraisal').classList.remove('hidden');
 }
 
 function flash(a) {
@@ -652,7 +810,21 @@ function ptMove(e) {
     const id = t.identifier !== undefined ? t.identifier : 'mouse';
     if (id !== dragId) continue;
     const dx = (t.clientX - dragX) / window.innerWidth;
-    run.targetX = clamp(dragStartX + dx * 9.5, -T.laneClamp, T.laneClamp);
+    /* Minus, not plus, and this is the single most important sign in the game.
+
+       The camera sits at a *lower* z than everything it looks at, because the
+       candle runs toward +z and the camera has to be behind it. That is a 180
+       degree rotation about Y, which mirrors the x axis: measured by
+       projecting a point, world +2 lands at NDC -0.31 and world -2 at +0.31.
+       World +x is screen LEFT.
+
+       So mapping a rightward drag to increasing x - the obvious thing, and
+       what the previous game on this stack shipped - inverts the controls. It
+       was never caught there because that game was never played with a thumb;
+       every check on it drove `steer()` in world coordinates, which is exactly
+       the layer this bug hides under. `dragging right moves the candle right`
+       in e2e drives real pointer events for that reason. */
+    run.targetX = clamp(dragStartX - dx * 9.5, -T.laneClamp, T.laneClamp);
   }
   e.preventDefault();
 }
@@ -673,7 +845,7 @@ window.addEventListener('resize', () => {
 });
 function frameCamera() {
   // solve fov so the road always fits the portrait frame with margin
-  const depth = 13.2;
+  const depth = 13.0;
   const wantHalf = T.roadW / 2 + 0.35;
   const tan = wantHalf / (camera.aspect * depth);
   camera.fov = clamp(2 * Math.atan(tan) * 180 / Math.PI, 42, 76);
@@ -687,332 +859,228 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) save(
 // ─────────────────────────────────────────────────────────────────────────────
 function step(dt) {
   run.time += dt;
+  run.spin += dt * 0.7;
 
-  // forward + steering. The boss fight is a standing arena, so stop advancing.
-  const held = run.bossPhase && boss && !boss.dead && (boss.z - run.z) < 13.5;
-  if (!held) run.z += runSpeed() * dt;
+  run.z += T.baseSpeed * dt;
+  /* Clamped here rather than only in the touch handler.
+
+     It lived in ptMove alone, which made the road's width an *input* rule: the
+     debug seam, and anything added later that nudges the candle - a knockback,
+     an autopilot, a wind gust - would have walked straight off the road with
+     nothing to stop it. An invariant about where the player can be belongs in
+     the simulation that owns the position. */
+  run.targetX = clamp(run.targetX, -T.laneClamp, T.laneClamp);
   run.x += (run.targetX - run.x) * smooth(T.steerSpeed, dt);
 
-  // spawn chunks ahead
   const aheadChunk = Math.floor((run.z + 90) / T.chunk);
   while (run.chunkSpawned < aheadChunk) { run.chunkSpawned++; spawnChunk(run.chunkSpawned); }
 
-  updateCrew(dt);
-  updateCombat(dt);
-  updateEnemies(dt);
-  updatePickups(dt);
-  updateGates(dt);
-  updateLoot(dt);
+  updateArches();
+  updateDrips(dt);
+  updateBlades(dt);
+  updateLamps(dt);
+  updatePools();
+  updateFlasks(dt);
+  updateWick(dt);
   updateSparks(dt);
+
+  if (run.z >= run.benchZ) finishRun(true);
 }
 
-// crew formation
-function crewTarget(i, out) {
-  if (i === 0) { out.x = 0; out.z = 0.85; return; }   // the captain leads
-  const per = 6;
-  const k = i - 1;
-  const row = Math.floor(k / per);
-  const col = (k % per) - (per - 1) / 2;
-  out.x = col * T.crewSpacing + (row % 2 ? T.crewSpacing / 2 : 0);
-  out.z = -row * 0.72;
-}
-const tmpT = { x: 0, z: 0 };
-function updateCrew(dt) {
-  const n = Math.min(run.crew, T.visCrew);
-  for (let i = 0; i < n; i++) {
-    const u = crewUnits[i];
-    crewTarget(i, tmpT);
-    const k = smooth(7.5, dt);
-    u.x += (tmpT.x - u.x) * k;
-    u.z += (tmpT.z - u.z) * k;
+const candleR = () => CD.candleRadius(run.candle);
+
+function updateWick(dt) {
+  if (!run.lit) {
+    run.snuffTimer -= dt;
+    if (run.snuffTimer <= 0) relight(false);
+    return;
   }
+  run.wick -= T.wickBurn * dt;
+  if (run.inHeat > 0) run.wick -= T.heatWick * dt;
+  if (run.wick <= 0) { run.wick = 0; finishRun(false); }
 }
 
-function nearestEnemy(fromZ) {
-  /* The armed Jotunn takes priority over everything else in range.
-
-     Nearest-first looks obviously right and is wrong here. Eighteen draugr are
-     typically still on the road when the boss spawns, and the boss sits behind
-     all of them, so every axe went into trash while the horn sounded, the
-     health bar sat at full, and the boss slammed on its own clock every 3.4
-     seconds. Worse, it is self-reinforcing: damage is proportional to warband
-     size, so each slam cuts the damage that would end the fight, and the fight
-     lengthens until the run dies with the boss above half.
-
-     The player is told to fight the Jotunn, so the warband fights the Jotunn.
-     The trash still reaches them and still costs crew - that is the intended
-     pressure of the boss arriving with an escort - but the fight is legible
-     and it converges. */
-  if (boss && boss.armed && !boss.dead) {
-    const d = boss.z - fromZ;
-    if (d >= -1.5 && d <= T.atkRange) return boss;
-  }
-  let best = null, bd = 1e9;
-  for (const e of enemies) {
-    if (e.dead) continue;
-    const d = e.z - fromZ;
-    if (d < -1.5 || d > T.atkRange) continue;
-    if (d < bd) { bd = d; best = e; }
-  }
-  return best;
+function relight(fromLamp) {
+  if (run.lit) return;
+  run.lit = true;
+  sfx.relight();
+  sparkle(run.x, CD.candleHeight(run.candle) + 0.4, run.z, 18, 0xffc861);
+  pop('LIT', '#ffd88a', run.x, CD.candleHeight(run.candle) + 1.1, run.z);
+  if (fromLamp) flash(0.12);
 }
 
-/* The `want` closest draugr in range, nearest first.
-
-   Kill rate, not damage, is what the warband runs out of. One volley of five
-   axes every 0.42s all landing on the same draugr is 2.4 kills a second no
-   matter how much damage each one carries, and a late chunk can put five on
-   the road at once - so the crowd is overrun by arithmetic while every axe
-   overkills a corpse. Spreading the same total damage across the five nearest
-   raises the ceiling to twelve kills a second and costs nothing, because the
-   damage was being wasted anyway.
-
-   Insertion sort into a fixed array: `want` is five, and allocating and
-   sorting a list of every enemy in range twice a second is more work than the
-   whole thing is worth. */
-const nearBuf = [];
-function nearestEnemies(fromZ, want) {
-  nearBuf.length = 0;
-  for (const e of enemies) {
-    if (e.dead) continue;
-    const d = e.z - fromZ;
-    if (d < -1.5 || d > T.atkRange) continue;
-    let i = nearBuf.length;
-    while (i > 0 && nearBuf[i - 1].z - fromZ > d) i--;
-    if (i >= want) continue;
-    nearBuf.splice(i, 0, e);
-    if (nearBuf.length > want) nearBuf.length = want;
-  }
-  return nearBuf;
-}
-
-let axeCursor = 0;
-function updateCombat(dt) {
-  run.atkTimer -= dt;
-  if (run.atkTimer > 0) return;
-  run.atkTimer = T.atkInterval;
-  const target = nearestEnemy(run.z);
-  if (!target) return;
-  const volley = Math.min(run.crew, 5);
-  const dmgEach = (run.crew * dmgPerHit()) / volley;
-  const n = Math.min(run.crew, T.visCrew);
-  /* Focus everything on the Jotunn; otherwise fan the volley across the
-     nearest few. Fewer draugr than axes and the extras double up, so a single
-     straggler - and a lone boss - still takes the warband's whole output. */
-  const spread = target === boss ? null : nearestEnemies(run.z, volley);
-  for (let i = 0; i < volley; i++) {
-    const u = crewUnits[Math.floor(Math.random() * n)];
-    const a = axes[axeCursor];
-    axeCursor = (axeCursor + 1) % axes.length;
-    a.live = true;
-    a.x = run.x + u.x; a.y = 1.1; a.z = run.z + u.z;
-    a.target = spread && spread.length ? spread[i % spread.length] : target;
-    /* Seeded: the flight time is when the damage lands. */
-    a.t = 0; a.dur = 0.16 + rnd() * 0.05;
-    a.dmg = dmgEach;
-    a.rot = 0;
-    a.col.setHex(TIERS[weaponTier()].c);
-  }
-  sfx.throwAxe();
-}
-
-function damage(e, d) {
-  if (e.dead) return;
-  e.hp -= d;
-  e.hurt = 0.12;
-  if (e.hp <= 0) {
-    e.dead = true;
-    const y = e.boss ? 3 : 1;
-    burst(e.x, y, e.z, e.boss ? 90 : (e.brute ? 18 : 10), 0, e.gold * goldMul());
-    if (e.brute || e.boss) burst(e.x, y, e.z, e.boss ? 26 : 6, 1, (e.boss ? 5 : 1.5) * T.crateIron * run.scale);
-    sparkle(e.x, y, e.z, e.boss ? 40 : 12, 0xffd070);
-    sfx.kill();
-    if (e.boss) {
-      shake(1.1); hitStop(140); sfx.boom();
-      pop('JOTUNN SLAIN', '#ffd24a', e.x, 4, e.z);
-      finishAscent(true);
-    } else {
-      shake(e.brute ? 0.3 : 0.14);
-      hitStop(e.brute ? 60 : 28);
-    }
-  } else {
-    sfx.hit();
-  }
-}
-
-function loseCrew(k, atX, atZ) {
-  if (k <= 0 || run.over) return;
-  run.crew = Math.max(0, run.crew - k);
-  pop('−' + k, '#ff6b78', atX, 2, atZ);
-  sparkle(atX, 1.2, atZ, 14, 0xff4d5e);
-  shake(0.5); hitStop(70);
-  sfx.hurt();
-  vigEl.style.opacity = '0.9';
-  setTimeout(() => { vigEl.style.opacity = '0'; }, 190);
-  if (run.crew <= 0) finishAscent(false);
-}
-
-function updateEnemies(dt) {
-  for (let i = enemies.length - 1; i >= 0; i--) {
-    const e = enemies[i];
-    if (e.hurt > 0) e.hurt -= dt;
-    if (e.dead) { enemies.splice(i, 1); if (e === boss) boss = null; continue; }
-    e.phase += dt * 6;
-    if (e.boss) {
-      // asleep until you are nearly on top of it
-      if (!e.armed) {
-        if (e.z - run.z < 30) armBoss(); else continue;
-      }
-      e.x += (run.x - e.x) * smooth(0.9, dt);
-      if (e.z - run.z > 10.5) e.z -= 2.4 * dt;
-      e.slam -= dt;
-      if (e.slam <= 0) {
-        e.slam = 3.4;
-        shake(0.8); hitStop(90);
-        sfx.boom();
-        if (e.z - run.z < 15) loseCrew(e.power, run.x, run.z + 1.5);
-      }
-    } else {
-      const gap = e.z - run.z;
-      if (gap < 34) e.z -= (e.brute ? 4.0 : 6.0) * dt;
-      e.x += clamp(run.x - e.x, -1, 1) * (gap < 34 ? 2.2 : 0.6) * dt;
-      if (e.z < run.z + 0.7) {
-        e.dead = true;
-        loseCrew(e.power, e.x, e.z);
-        continue;
-      }
-    }
-    if (e.z < run.z - 30) { e.dead = true; }
-  }
-}
-
-function updatePickups(dt) {
-  const magnet = magnetR();
-  for (let i = crates.length - 1; i >= 0; i--) {
-    const c = crates[i];
-    c.spin += dt * 1.6; c.bob += dt * 3;
-    const dz = c.z - run.z, dx = c.x - run.x;
-    if (dz < 0.9 && dz > -2.5 && Math.abs(dx) < 1.6) {
-      burst(c.x, 0.9, c.z, 14, 1, T.crateIron * run.scale);
-      burst(c.x, 0.9, c.z, 8, 0, 10 * run.scale * goldMul());
-      sparkle(c.x, 0.9, c.z, 10, 0xd0e8ff);
-      sfx.smash(); shake(0.13);
-      crates.splice(i, 1);
-      continue;
-    }
-    if (dz < -6) crates.splice(i, 1);
-  }
-  for (let i = shrines.length - 1; i >= 0; i--) {
-    const s = shrines[i];
-    s.spin += dt * 1.4;
-    const dz = s.z - run.z;
-    if (dz < 0.9 && Math.abs(s.x - run.x) < 1.8) {
-      burst(s.x, 1.2, s.z, 5, 2, T.shrineRune);
-      sparkle(s.x, 1.2, s.z, 18, 0xc17bff);
-      sfx.gate(true); shake(0.2);
-      shrines.splice(i, 1);
-      continue;
-    }
-    if (dz < -6) shrines.splice(i, 1);
-  }
-}
-
-function updateGates(dt) {
-  for (let i = gates.length - 1; i >= 0; i--) {
-    const g = gates[i];
+function updateArches() {
+  for (let i = arches.length - 1; i >= 0; i--) {
+    const g = arches[i];
     if (!g.taken && g.z < run.z + 0.4) {
       g.taken = true;
-      const pick = run.x < 0 ? g.left : g.right;
-      applyGate(pick, g.z);
+      dip(run.x < 0 ? g.left : g.right, g.z);
     }
-    if (g.z < run.z - 8) gates.splice(i, 1);
+    if (g.z < run.z - 8) arches.splice(i, 1);
   }
 }
-function applyGate(op, z) {
-  const before = run.crew;
-  let n = run.crew;
-  if (op.op === 'add') n += op.v;
-  else if (op.op === 'mul') n *= op.v;
-  else if (op.op === 'sub') n -= op.v;
-  else if (op.op === 'div') n = Math.ceil(n / op.v);
-  n = Math.round(n);
-  const cap = maxCrew();
-  if (n > cap) {
-    const over = n - cap;
-    n = cap;
-    const bonus = over * 30 * run.scale * goldMul();
-    run.gold += bonus;
-    pop('CREW FULL +' + fmt(bonus), '#ffd24a', run.x, 3.1, z);
-  }
-  n = Math.max(1, n);   // a gate costs, it never wipes the run
-  run.crew = n;
-  const diff = n - before;
-  if (diff > 0) {
-    pop(op.text + '  CREW', '#8bff9c', run.x, 2.6, z);
-    sparkle(run.x, 1.4, z, 16, 0x7dff9b);
-    sfx.gate(true);
-    flash(0.14);
-  } else if (diff < 0) {
-    pop(op.text + '  CREW', '#ff6b78', run.x, 2.6, z);
-    sparkle(run.x, 1.4, z, 14, 0xff4d5e);
-    sfx.gate(false);
-    shake(0.35);
-  }
-  if (run.crew <= 0) finishAscent(false);
+
+function dip(pick, z) {
+  /* A dip in the dark is a poor dip: the wax will not take evenly on a cold
+     candle. Half, not nothing - a trap that voids the next arch entirely would
+     make being snuffed feel like a lost run rather than a setback. */
+  const amt = pick.amt * (run.lit ? 1 : 0.5);
+  const before = run.candle.length;
+  CD.addWax(run.candle, pick.wax, amt, maxLayers());
+  run.dipped++;
+  const w = WAXES[pick.wax];
+  const hex = '#' + w.col.toString(16).padStart(6, '0');
+  pop((run.lit ? '+' : '+') + Math.round(amt) + ' ' + w.n, hex, run.x, 2.6, z);
+  sparkle(run.x, 1.2, z, 18, w.col);
+  sfx.dip();
+  shake(0.12);
+  if (run.candle.length > before) flash(0.10);
+  if (!run.lit) toast('COLD DIP · HALF TOOK', 1.0);
   syncHUD();
 }
 
-function updateLoot(dt) {
-  const mag = magnetR();
+function updateDrips(dt) {
+  const mag = magnetR() + candleR();
   const mag2 = mag * mag;
-  for (const p of loot) {
-    if (!p.live) continue;
-    p.t += dt;
-    p.rot += p.spin * dt;
-    if (p.t < 0.26) {
-      p.vy -= 26 * dt;
-      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-      if (p.y < 0.2) { p.y = 0.2; p.vy *= -0.35; p.vx *= 0.6; p.vz *= 0.6; }
-    } else {
-      const dx = run.x - p.x, dy = 1.0 - p.y, dz = run.z - p.z;
-      const d2 = dx * dx + dy * dy + dz * dz;
-      if (d2 < mag2 || p.t > 0.6) {
-        const d = Math.max(0.25, Math.sqrt(d2));
-        const sp = 9 + p.t * 30;
-        p.x += dx / d * sp * dt; p.y += dy / d * sp * dt; p.z += dz / d * sp * dt;
-        if (d < 0.75) { collect(p); continue; }
-      } else {
-        p.vy -= 26 * dt;
-        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-        if (p.y < 0.2) { p.y = 0.2; p.vy *= -0.35; p.vx *= 0.6; p.vz *= 0.6; }
+  for (let i = drips.length - 1; i >= 0; i--) {
+    const d = drips[i];
+    d.bob += dt * 3;
+    const dz = d.z - run.z, dx = d.x - run.x;
+    if (dz < -6) { drips.splice(i, 1); continue; }
+    if (dz > 14) continue;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < mag2) {
+      /* Magneted in rather than collected on touch, so a near miss still
+         rewards the steer that nearly made it. */
+      const k = smooth(9, dt);
+      d.x += (run.x - d.x) * k;
+      d.z += (run.z - d.z) * k;
+      if (d2 < 0.55) {
+        drips.splice(i, 1);
+        if (!run.lit) continue;      // a cold candle sheds wax rather than taking it
+        /* Droplets thicken the ring you are already wearing; they never start
+           a new one.
+
+           They used to carry a colour of their own, and the first golden run
+           came out with seven rings from five dips - so the road was quietly
+           authoring the candle's design and the arch, which is the only real
+           decision in the game, was diluted to one voice among many. Now the
+           arches decide *what* the candle is and droplets decide *how much of
+           it*, which is the same split as a run resource against a persistent
+           one and it keeps both legible. */
+        CD.addWax(run.candle, CD.outer(run.candle).wax, T.dripWax * dripMul(), maxLayers());
+        sfx.drip();
+        syncHUD();
       }
     }
-    if (p.z < run.z - 14 || p.t > 6) p.live = false;
   }
 }
-function collect(p) {
-  p.live = false;
-  if (p.kind === 0) { run.gold += p.val; }
-  else if (p.kind === 1) { run.iron += p.val; feedForge(); }
-  else {
-    const before = Math.floor(run.runes);
-    run.runes += p.val;
-    if (Math.floor(run.runes) > before) pop('+1 RUNE', '#d2a4ff', run.x, 2.4, run.z + 1);
+
+function updateBlades(dt) {
+  for (let i = blades.length - 1; i >= 0; i--) {
+    const b = blades[i];
+    b.spin += dt * 7.5;
+    const dz = b.z - run.z;
+    if (dz < -6) { blades.splice(i, 1); continue; }
+    if (b.hit || dz > 0.8 || dz < -0.8) continue;
+    if (Math.abs(b.x - run.x) < T.bladeR + candleR()) {
+      b.hit = true;
+      const took = CD.shave(run.candle, T.bladeShave * run.scale * shaveMul(), T.bladeLop * lopMul());
+      run.shaved += took;
+      if (took > 0.01) {
+        pop('−' + took.toFixed(0) + ' WAX', '#ff6b78', run.x, 2.2, b.z);
+        sparkle(b.x, 1.0, b.z, 16, 0xffe6c4);
+        sfx.scrape();
+        shake(0.55); hitStop(70);
+        vigEl.style.opacity = '0.85';
+        setTimeout(() => { vigEl.style.opacity = '0'; }, 190);
+      } else {
+        /* Nothing left to take. Say so, or a blade that costs nothing looks
+           like a blade that missed. */
+        pop('BARE CORE', '#ffb26b', run.x, 2.2, b.z);
+        sfx.scrape(); shake(0.2);
+      }
+      syncHUD();
+    }
   }
-  sfx.ping();
 }
-function feedForge() {
-  let need = forgeNeed();
-  while (run.iron >= need && weaponTier() < TIERS.length - 1) {
-    run.iron -= need;
-    run.forgeTier++;
-    const t = weaponTier();
-    toast(TIERS[t].n + ' FORGED', 1.3);
-    pop(TIERS[t].n, '#9be6ff', run.x, 3.0, run.z + 2);
-    sparkle(run.x, 1.6, run.z + 1, 22, TIERS[t].c);
-    sfx.forge();
-    flash(0.22); shake(0.3); hitStop(70);
-    need = forgeNeed();
+
+function updateLamps(dt) {
+  let inside = false;
+  for (let i = lamps.length - 1; i >= 0; i--) {
+    const l = lamps[i];
+    if (l.z < run.z - 8) { lamps.splice(i, 1); continue; }
+    const dz = l.z - run.z, dx = l.x - run.x;
+    const rr = l.r + candleR();
+    if (dz * dz + dz * 0 + dx * dx < rr * rr && Math.abs(dz) < rr) {
+      inside = true;
+      /* Heat relights a snuffed wick, and that is the best interaction in the
+         game: the hazard you spend the run avoiding becomes the thing you need
+         the moment water takes your flame. The price is paid in the same
+         breath - you are melting while you stand in it. */
+      if (!run.lit) relight(true);
+      const lost = CD.melt(run.candle, T.heatMelt * run.scale * meltMul() * dt);
+      if (lost > 0) sfx.sizzle();
+    }
+  }
+  if (inside) {
+    run.inHeat += dt;
+    if (run.inHeat > 0.25 && Math.floor(run.inHeat * 4) !== Math.floor((run.inHeat - dt) * 4)) {
+      sparkle(run.x, 0.6 + Math.random() * 1.2, run.z, 2, 0xff9d4a);
+      syncHUD();
+    }
+  } else {
+    run.inHeat = 0;
+  }
+}
+
+function updatePools() {
+  for (let i = pools.length - 1; i >= 0; i--) {
+    const p = pools[i];
+    if (p.z < run.z - 8) { pools.splice(i, 1); continue; }
+    if (p.used) continue;
+    const dz = p.z - run.z, dx = p.x - run.x;
+    const rr = p.r + candleR();
+    if (Math.abs(dz) < rr && Math.abs(dx) < rr) {
+      p.used = true;
+      if (!run.lit) continue;
+      if (snuffs()) {
+        run.lit = false;
+        run.snuffTimer = 5.0;
+        sfx.douse();
+        shake(0.7); hitStop(110);
+        pop('SNUFFED', '#8fd3ff', run.x, 2.4, p.z);
+        toast('SNUFFED · FIND HEAT', 1.4);
+      } else {
+        /* Sea Salt found: the trap becomes a scare. Still worth drawing and
+           still worth hearing, because a hazard that does literally nothing
+           trains the player to stop looking at it. */
+        sfx.douse();
+        shake(0.25);
+        pop('GUTTERS', '#8fd3ff', run.x, 2.4, p.z);
+      }
+    }
+  }
+}
+
+function updateFlasks(dt) {
+  for (let i = flasks.length - 1; i >= 0; i--) {
+    const f = flasks[i];
+    f.spin += dt * 2.2;
+    if (f.z < run.z - 8) { flasks.splice(i, 1); continue; }
+    const dz = f.z - run.z, dx = f.x - run.x;
+    if (Math.abs(dz) < 1.0 + candleR() && Math.abs(dx) < 0.9 + candleR()) {
+      flasks.splice(i, 1);
+      if (S.scents.indexOf(f.id) >= 0) continue;
+      S.scents.push(f.id);
+      run.scentsFound++;
+      save();
+      sfx.scent();
+      flash(0.35); shake(0.4); hitStop(120);
+      pop(SCENTS[f.id].n, '#ffd88a', run.x, 3.0, f.z);
+      toast(SCENTS[f.id].ic + '  ' + SCENTS[f.id].n, 2.2);
+      sparkle(run.x, 1.6, run.z, 30, 0xffd88a);
+    }
   }
 }
 
@@ -1020,27 +1088,9 @@ function updateSparks(dt) {
   for (const s of sparks) {
     if (!s.live) continue;
     s.t += dt;
-    s.vy -= 22 * dt;
+    s.vy -= 20 * dt;
     s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
-    if (s.t > 0.55 || s.y < 0) s.live = false;
-  }
-}
-function updateAxes(dt) {
-  for (const a of axes) {
-    if (!a.live) continue;
-    a.t += dt;
-    a.rot += dt * 34;
-    const e = a.target;
-    if (!e || e.dead) { a.live = false; continue; }
-    const k = clamp(a.t / a.dur, 0, 1);
-    a.x = lerp(a.x, e.x, smooth(26, dt));
-    a.z = lerp(a.z, e.z, smooth(26, dt));
-    a.y = lerp(a.y, (e.boss ? 2.6 : 1.0), smooth(20, dt));
-    if (k >= 1) {
-      a.live = false;
-      damage(e, a.dmg);
-      sparkle(e.x, e.boss ? 2.6 : 1.1, e.z, 4, 0xffe08a);
-    }
+    if (s.t > 0.6 || s.y < 0) s.live = false;
   }
 }
 
@@ -1059,231 +1109,185 @@ function buildScenery() {
         const h = hash(c * 7 + k, 31 + side * 13);
         if (h < 1 - T.sceneryChance) continue;
         const z = c * T.chunk + k * 4 + hash(c, k + side * 5) * 3.4;
-        const x = sgn * (T.roadW / 2 + 1.1 + hash(c, k + 40 + side) * 7);
-        const tree = hash(c, k + 60 + side) > 1 - T.treeChance;
-        scenery.push({ x, z, tree, s: 0.65 + hash(c, k + 70 + side) * 0.8, r: hash(c, k + 80 + side) * 6.28 });
+        const x = sgn * (T.roadW / 2 + 1.2 + hash(c, k + 40 + side) * 7);
+        /* The roadside is other candles - a chandler's yard of finished
+           tapers - so the scenery is the same primitive as the player and
+           costs nothing extra to draw. */
+        const taper = hash(c, k + 60 + side) > 0.36;
+        scenery.push({ x, z, taper, s: 0.6 + hash(c, k + 70 + side) * 1.5, r: hash(c, k + 80 + side) * 6.28 });
       }
     }
   }
 }
 
-function writeCrew() {
-  const n = Math.min(run.crew, T.visCrew);
-  const t = run.time;
-  for (const k in L) L[k].reset();
-  for (let i = 0; i < n; i++) {
-    const u = crewUnits[i];
-    const cap = i === 0;
-    const sc = (cap ? 0.98 : 0.78 + ((i * 37) % 11) * 0.012);
-    const ph = u.phase + t * 13;
-    const bob = Math.abs(Math.sin(ph)) * 0.11;
-    const px = run.x + u.x, pz = run.z + u.z;
+/* The candle: one instance per ring, innermost first.
 
-    // root
-    Q.setFromAxisAngle(V.set(0, 1, 0), Math.sin(ph * 0.5) * 0.06);
-    M.compose(V2.set(px, bob, pz), Q, V.set(sc, sc, sc));
-
-    // legs
-    for (let s = 0; s < 2; s++) {
-      const sw = Math.sin(ph + s * Math.PI) * 0.62;
-      M2.makeTranslation(s ? 0.15 : -0.15, 0.52, 0);
-      Q.setFromAxisAngle(V.set(1, 0, 0), sw);
-      M3.makeRotationFromQuaternion(Q);
-      M2.multiply(M3);
-      M3.makeTranslation(0, -0.26, 0);
-      M2.multiply(M3);
-      L.leg.push(M3.multiplyMatrices(M, M2));
-    }
-    // torso + belt
-    M2.makeTranslation(0, 0.88, 0);
-    L.torso.push(M3.multiplyMatrices(M, M2), u.cloak);
-    M2.makeTranslation(0, 0.60, 0);
-    L.belt.push(M3.multiplyMatrices(M, M2));
-    // arms (opposite phase to legs), right arm carries the axe
-    let armR = null;
-    for (let s = 0; s < 2; s++) {
-      const sw = Math.sin(ph + (s ? 0 : Math.PI)) * 0.5 - 0.15;
-      M2.makeTranslation(s ? 0.40 : -0.40, 1.08, 0);
-      Q.setFromAxisAngle(V.set(1, 0, 0), sw);
-      M3.makeRotationFromQuaternion(Q);
-      M2.multiply(M3);
-      M3.makeTranslation(0, -0.23, 0);
-      M2.multiply(M3);
-      M3.multiplyMatrices(M, M2);
-      L.arm.push(M3, u.cloak);
-      if (s) armR = MA.copy(M3);
-    }
-    // head, beard, helmet, horns
-    M2.makeTranslation(0, 1.38, 0);
-    L.head.push(M3.multiplyMatrices(M, M2));
-    M2.makeTranslation(0, 1.30, 0.15);
-    L.beard.push(M3.multiplyMatrices(M, M2), u.beard);
-    M2.makeTranslation(0, 1.60, 0);
-    L.helm.push(M3.multiplyMatrices(M, M2));
-    for (let s = 0; s < 2; s++) {
-      Q.setFromAxisAngle(V.set(0, 0, 1), s ? -0.5 : 0.5);
-      M2.compose(V2.set(s ? 0.24 : -0.24, 1.78, 0), Q, ONE);
-      L.horn.push(M3.multiplyMatrices(M, M2));
-    }
-    // axe in the right hand
-    if (armR) {
-      Q.setFromAxisAngle(V.set(0, 0, 1), 0.35);
-      M2.compose(V2.set(0.03, -0.16, 0.06), Q, ONE);
-      M3.multiplyMatrices(armR, M2);
-      L.haft.push(M3);
-      M2.makeTranslation(0, 0.46, 0);
-      L.blade.push(MB.multiplyMatrices(M3, M2), CTMP.setHex(TIERS[weaponTier()].c));
-    }
-    // shield on the back
-    Q.setFromAxisAngle(V.set(1, 0, 0), Math.PI / 2);
-    M2.compose(V2.set(0, 0.92, -0.32), Q, ONE);
-    L.shield.push(M3.multiplyMatrices(M, M2), u.shield);
-    // blob shadow
-    Q.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
-    M2.compose(V2.set(px, 0.075, pz), Q, V.set(sc, sc, sc));
-    L.shadow.push(M2);
+   Every ring alternates which way it leans, so a candle that has taken knocks
+   zigzags rather than tipping uniformly - a uniform tilt reads as the camera
+   being crooked, and a zigzag reads unmistakably as damage. */
+function writeCandle() {
+  C.ring.reset(); C.wick.reset();
+  const c = run.candle;
+  const r = CD.radii(c), h = CD.heights(c), l = CD.leans(c);
+  const wob = Math.sin(run.time * 2.1) * 0.02;
+  for (let i = 0; i < c.length; i++) {
+    const dir = i % 2 ? 1 : -1;
+    const px = run.x + l[i] * dir;
+    Q.setFromAxisAngle(V.set(0, 1, 0), run.spin);
+    M2.compose(V2.set(px, h[i] / 2, run.z), Q, V.set(r[i] * 2, h[i], r[i] * 2));
+    C.ring.push(M2, CTMP.setHex(WAXES[c[i].wax].col));
   }
-}
+  // the wick, standing on the core
+  const top = h[0];
+  const wickH = 0.30 + 0.34 * clamp(run.wick / run.wickMax, 0, 1);
+  M2.compose(V2.set(run.x + wob, top + wickH / 2, run.z), Q.identity(), V.set(1, wickH, 1));
+  C.wick.push(M2);
 
-function writeEnemies() {
-  for (const k in E) E[k].reset();
-  const t = run.time;
-  for (const e of enemies) {
-    if (e.dead) continue;
-    const sc = e.scale;
-    const ph = e.phase;
-    const bob = Math.abs(Math.sin(ph)) * 0.09 * sc;
-    const hurt = e.hurt > 0 ? 1 : 0;
-    CTMP.setHex(e.tint);
-    if (hurt) CTMP.setHex(0xffffff);
-    Q.setFromAxisAngle(V.set(0, 1, 0), Math.PI);
-    M.compose(V2.set(e.x, bob, e.z), Q, V.set(sc, sc, sc));
+  // ground shadow, scaled to the widest ring
+  const rad = r[c.length - 1];
+  Q.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
+  M2.compose(V2.set(run.x, 0.03, run.z), Q, V.set(rad * 2.4, rad * 2.4, 1));
+  W.shadow.push(M2);
 
-    for (let s = 0; s < 2; s++) {
-      const sw = Math.sin(ph + s * Math.PI) * 0.4;
-      M2.makeTranslation(s ? 0.17 : -0.17, 0.55, 0);
-      Q.setFromAxisAngle(V.set(1, 0, 0), sw);
-      M3.makeRotationFromQuaternion(Q);
-      M2.multiply(M3);
-      M3.makeTranslation(0, -0.28, 0);
-      M2.multiply(M3);
-      E.leg.push(M3.multiplyMatrices(M, M2));
-    }
-    M2.makeTranslation(0, 0.93, 0);
-    E.torso.push(M3.multiplyMatrices(M, M2), CTMP);
-    let armR = null;
-    for (let s = 0; s < 2; s++) {
-      const sw = Math.sin(ph + (s ? 0 : Math.PI)) * 0.35 - 0.2;
-      M2.makeTranslation(s ? 0.50 : -0.50, 1.16, 0);
-      Q.setFromAxisAngle(V.set(1, 0, 0), sw);
-      M3.makeRotationFromQuaternion(Q);
-      M2.multiply(M3);
-      M3.makeTranslation(0, -0.25, 0);
-      M2.multiply(M3);
-      M3.multiplyMatrices(M, M2);
-      E.arm.push(M3);
-      if (s) armR = MA.copy(M3);
-    }
-    M2.makeTranslation(0, 1.44, 0);
-    E.head.push(M3.multiplyMatrices(M, M2), hurt ? CTMP.setHex(0xffffff) : CTMP.setHex(0xdcd6c2));
-    for (let s = 0; s < 2; s++) {
-      Q.setFromAxisAngle(V.set(0, 0, 1), s ? -0.85 : 0.85);
-      M2.compose(V2.set(s ? 0.30 : -0.30, 1.60, 0), Q, ONE);
-      E.horn.push(M3.multiplyMatrices(M, M2));
-    }
-    if (armR) {
-      Q.setFromAxisAngle(V.set(0, 0, 1), -0.4);
-      M2.compose(V2.set(0, -0.2, 0.05), Q, ONE);
-      M3.multiplyMatrices(armR, M2);
-      E.haft.push(M3);
-      M2.makeTranslation(0, 0.55, 0);
-      E.club.push(MB.multiplyMatrices(M3, M2));
-    }
-    // shadow shares the crew layer
-    Q.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
-    M2.compose(V2.set(e.x, 0.075, e.z), Q, V.set(sc * 1.2, sc * 1.2, sc * 1.2));
-    L.shadow.push(M2);
+  // flame, halo and the light that makes the whole scene
+  const fy = top + wickH + 0.16;
+  if (run.lit) {
+    const flick = 0.86 + Math.sin(run.time * 21) * 0.07 + Math.random() * 0.07;
+    /* Generous, because the flame has to be the brightest and most obviously
+       alive thing on screen - it is the light source, the timer and the thing
+       water takes away. Sized from the first pass it was a sliver on a phone
+       and read as a detail on top of the candle rather than as the point of
+       it. CRAFT.md: the most valuable thing on screen must be the brightest. */
+    const fs = (0.52 + rad * 0.48) * flick;
+    flameMesh.visible = true;
+    flameMesh.position.set(run.x + wob, fy + fs * 0.72, run.z);
+    flameMesh.scale.set(fs * 1.05, fs * 1.7, fs * 1.05);
+    flameCore.visible = true;
+    flameCore.position.set(run.x + wob, fy + fs * 0.52, run.z);
+    flameCore.scale.set(fs * 0.56, fs * 1.06, fs * 0.56);
+    halo.visible = true;
+    halo.position.set(run.x + wob, fy + fs * 0.6, run.z - 0.05);
+    const hs = 4.8 + rad * 7.0;
+    halo.scale.set(hs * flick, hs * flick, 1);
+    flameLight.position.set(run.x, fy + 0.35, run.z);
+    /* Intensity tracks the candle's size, so a run that has gone badly is a
+       run you can also see less of. That is a real cost with no number
+       attached to it, and it is the one the player feels first. */
+    flameLight.intensity = (7.5 + rad * 22) * flick;
+    flameLight.distance = 18 + rad * 26;
+  } else {
+    flameMesh.visible = false;
+    flameCore.visible = false;
+    halo.visible = false;
+    flameLight.intensity = 0;
   }
+  C.ring.flush(); C.wick.flush();
 }
 
 function writeWorld() {
-  for (const k in W) W[k].reset();
+  for (const k in W) if (k !== 'shadow') W[k].reset();
 
   // steps on the road, the main sense of speed
   const s0 = Math.floor((run.z - 14) / 2.6);
   for (let i = 0; i < 60; i++) {
-    const z = (s0 + i) * 2.6;
-    M2.makeTranslation(0, 0.03, z);
+    M2.makeTranslation(0, 0.03, (s0 + i) * 2.6);
     W.step.push(M2);
   }
-  // scenery
+
   buildScenery();
   for (const s of scenery) {
-    if (s.tree) {
-      M2.compose(V2.set(s.x, 0.65 * s.s, s.z), Q.setFromAxisAngle(V.set(0, 1, 0), s.r), V.set(s.s, s.s, s.s));
-      W.trunk.push(M2);
-      M2.compose(V2.set(s.x, 2.4 * s.s, s.z), Q.setFromAxisAngle(V.set(0, 1, 0), s.r), V.set(s.s, s.s, s.s));
-      W.tree.push(M2);
+    if (s.taper) {
+      const hh = 1.2 * s.s;
+      M2.compose(V2.set(s.x, hh / 2, s.z), Q.setFromAxisAngle(V.set(0, 1, 0), s.r), V.set(0.5 * s.s, hh, 0.5 * s.s));
+      W.taper.push(M2);
+      M2.compose(V2.set(s.x, hh + 0.2 * s.s, s.z), Q.identity(), V.set(s.s * 0.7, s.s * 0.7, s.s * 0.7));
+      W.tip.push(M2);
     } else {
-      M2.compose(V2.set(s.x, 0.1, s.z), Q.setFromAxisAngle(V.set(0.3, 1, 0.2).normalize(), s.r), V.set(s.s, s.s * 0.8, s.s));
-      W.rock.push(M2);
+      M2.compose(V2.set(s.x, 0.35 * s.s, s.z), Q.setFromAxisAngle(V.set(0, 1, 0), s.r), V.set(s.s, s.s, s.s));
+      W.block.push(M2);
     }
   }
-  // far mountains — fixed relative to the player, so they parallax
+
+  // far silhouettes — fixed relative to the player, so they parallax
   for (let i = 0; i < 6; i++) {
     const x = (i - 2.5) * 46 + ((run.z * 0.02) % 46);
-    M2.compose(V2.set(x, 4, run.z + 145 + (i % 2) * 34), Q.setFromAxisAngle(V.set(0, 1, 0), i), V.set(1, 0.8 + (i % 3) * 0.2, 1));
-    W.mount.push(M2);
+    M2.compose(V2.set(x, 8, run.z + 150 + (i % 2) * 34), Q.identity(), V.set(1, 0.7 + (i % 3) * 0.35, 1));
+    W.far.push(M2);
   }
-  // crates
-  for (const c of crates) {
-    const y = 0.5 + Math.sin(c.bob) * 0.06;
-    M2.compose(V2.set(c.x, y, c.z), Q.setFromAxisAngle(V.set(0, 1, 0), c.spin * 0.3), ONE);
-    W.crate.push(M2, CTMP.setHex(0xb07a3a));
-    M2.compose(V2.set(c.x, y, c.z), Q.setFromAxisAngle(V.set(0, 1, 0), c.spin * 0.3), V.set(1.04, 0.34, 1.04));
-    W.band.push(M2);
+
+  /* Droplets wear the colour of the candle's current outside, because that is
+     what they will become the instant they are collected. It also turns the
+     road into a running readout of what you are wearing: cross an arch and the
+     trail ahead changes colour. */
+  const dripCol = WAXES[CD.outer(run.candle).wax].col;
+  for (const d of drips) {
+    const y = 0.75 + Math.sin(d.bob) * 0.12;
+    M2.compose(V2.set(d.x, y, d.z), Q.setFromAxisAngle(V.set(0.4, 1, 0.2).normalize(), d.bob * 0.5), ONE);
+    W.drip.push(M2, CTMP.setHex(dripCol));
+  }
+
+  for (const b of blades) {
+    if (b.hit) continue;
+    M2.compose(V2.set(b.x, 0.85, b.z), Q.setFromAxisAngle(V.set(0, 0, 1), Math.PI / 2).premultiply(
+      new THREE.Quaternion().setFromAxisAngle(V.set(1, 0, 0), b.spin)), ONE);
+    W.blade.push(M2);
+    M2.compose(V2.set(b.x, 0.75, b.z), Q.identity(), ONE);
+    W.post.push(M2);
+  }
+
+  for (const l of lamps) {
+    const pulse = 1 + Math.sin(run.time * 5 + l.z) * 0.06;
+    M2.compose(V2.set(l.x, 1.25, l.z), Q.identity(), V.set(pulse, pulse, pulse));
+    W.lamp.push(M2);
+    M2.compose(V2.set(l.x, 0.45, l.z), Q.identity(), ONE);
+    W.lampleg.push(M2);
+  }
+
+  for (const p of pools) {
+    if (p.used) continue;
     Q.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
-    M2.compose(V2.set(c.x, 0.075, c.z), Q, ONE);
-    L.shadow.push(M2);
+    const s = p.r * 2 * (1 + Math.sin(run.time * 3 + p.z) * 0.03);
+    M2.compose(V2.set(p.x, 0.06, p.z), Q, V.set(s, s, 1));
+    W.pool.push(M2);
   }
-  // shrines
-  for (const s of shrines) {
-    const y = 1.15 + Math.sin(run.time * 2.4 + s.z) * 0.16;
-    M2.compose(V2.set(s.x, y, s.z), Q.setFromAxisAngle(V.set(0.2, 1, 0).normalize(), s.spin), ONE);
-    W.shrine.push(M2, CTMP.setHex(0xa855f7));
+
+  for (const f of flasks) {
+    const y = 1.7 + Math.sin(run.time * 2.6 + f.z) * 0.18;
+    M2.compose(V2.set(f.x, y, f.z), Q.setFromAxisAngle(V.set(0.2, 1, 0).normalize(), f.spin), ONE);
+    W.flask.push(M2, CTMP.setHex(0xffd88a));
   }
-  // loot
-  for (const p of loot) {
-    if (!p.live) continue;
-    M2.compose(V2.set(p.x, p.y, p.z), Q.setFromAxisAngle(V.set(0.4, 1, 0.2).normalize(), p.rot), ONE);
-    W.loot.push(M2, p.col);
+
+  // the chandler's bench at the end of the road
+  if (run.benchZ - run.z < 120) {
+    M2.compose(V2.set(0, 1.1, run.benchZ + 1.2), Q.identity(), ONE);
+    W.bench.push(M2);
+    for (let i = 0; i < 4; i++) {
+      M2.compose(V2.set((i % 2 ? 1 : -1) * 2.0, 0.55, run.benchZ + (i < 2 ? 0.7 : 1.7)), Q.identity(), ONE);
+      W.benchleg.push(M2);
+    }
   }
-  // thrown axes
-  for (const a of axes) {
-    if (!a.live) continue;
-    M2.compose(V2.set(a.x, a.y, a.z), Q.setFromAxisAngle(V.set(0, 0, 1), a.rot), ONE);
-    W.axe.push(M2, a.col);
-  }
-  // sparks reuse the loot layer at a small scale
+
+  // sparks reuse the droplet layer at a small scale
   for (const s of sparks) {
     if (!s.live) continue;
-    const k = 1 - s.t / 0.55;
-    M2.compose(V2.set(s.x, s.y, s.z), Q.setFromAxisAngle(V.set(1, 1, 0).normalize(), s.t * 12), V.set(k * 0.8, k * 0.8, k * 0.8));
-    W.loot.push(M2, s.col);
+    const k = 1 - s.t / 0.6;
+    M2.compose(V2.set(s.x, s.y, s.z), Q.setFromAxisAngle(V.set(1, 1, 0).normalize(), s.t * 12), V.set(k, k, k));
+    W.drip.push(M2, s.col);
   }
+
   for (const k in W) W[k].flush();
 }
 
-function writeGates() {
+function writeArches() {
   let gi = 0;
-  for (const g of gates) {
-    if (g.taken || gi >= gateHalves.length - 1) continue;
+  for (const g of arches) {
+    if (g.taken || gi >= archHalves.length - 1) continue;
     const half = T.roadW / 4;
-    gateHalves[gi].set(-half, g.z, g.left.text, g.left.good, true);
-    gateHalves[gi + 1].set(half, g.z, g.right.text, g.right.good, false);
+    archHalves[gi].set(-half, g.z, g.left.wax, Math.round(g.left.amt), true);
+    archHalves[gi + 1].set(half, g.z, g.right.wax, Math.round(g.right.amt), false);
     gi += 2;
   }
-  for (let i = gi; i < gateHalves.length; i++) gateHalves[i].hide();
+  for (let i = gi; i < archHalves.length; i++) archHalves[i].hide();
 }
 
 function updatePops(dt) {
@@ -1317,6 +1321,12 @@ function updateWorldObjects() {
     pa.array[i * 3 + 2] = z;
   }
   pa.needsUpdate = true;
+
+  /* Being snuffed is told by the screen going dark rather than by a caption.
+     The overlay is a slow fade in and a fast fade out, because arriving in the
+     dark should feel like something closing and relighting should feel
+     instant. */
+  darkEl.style.opacity = run.lit ? '0' : '0.55';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1348,34 +1358,46 @@ function tick(dt, draw = true) {
     run.hitStop -= dt;
   } else if (run.active && !run.over) {
     step(dt);
-    updateAxes(dt);
   } else {
-    updateLoot(dt); updateSparks(dt); updateAxes(dt);
+    updateSparks(dt);
+    run.spin += dt * 0.9;
   }
 
-  // camera
+  /* The bench close-up. The camera pushes in on the candle rather than cutting
+     to a panel, so the thing being appraised is the thing you were steering
+     two seconds ago. */
+  const done = run.over;
   const tx = run.x * 0.62;
-  camPos.set(tx, 8.1, run.z - 12.4);
-  camera.position.lerp(camPos, smooth(9, dt));
+  if (done) {
+    camPos.set(run.x * 0.3, 2.4 + CD.candleHeight(run.candle) * 0.5, run.z - 4.6);
+  } else {
+    camPos.set(tx, 7.6, run.z - 11.9);
+  }
+  camera.position.lerp(camPos, smooth(done ? 2.6 : 9, dt));
   if (run.shake > 0) {
     run.shake = Math.max(0, run.shake - dt * 2.6);
     const s = run.shake * run.shake * 0.55;
     camera.position.x += (Math.random() - 0.5) * s;
     camera.position.y += (Math.random() - 0.5) * s;
   }
-  camLook.set(run.x * 0.4, 1.3, run.z + 8.5);
+  /* The look target sits well ahead of and above the candle.
+
+     Aimed just in front of it, the horizon rode high, the candle sat low in
+     frame and the bottom third of a portrait screen was empty road. On a phone
+     that third is the most valuable space there is - it is where the thumb
+     lives - so the framing has to spend it on the road you are about to steer
+     through, not on the road you have already left. */
+  camLook.set(done ? run.x : run.x * 0.4, done ? CD.candleHeight(run.candle) * 0.55 : 2.3, done ? run.z : run.z + 10.5);
   camera.lookAt(camLook);
   sun.position.set(camera.position.x - 8, camera.position.y + 14, camera.position.z - 6);
   sun.target.position.set(run.x, 0, run.z);
   sun.target.updateMatrixWorld();
 
   updateWorldObjects();
-  writeCrew();
-  writeEnemies();
-  writeWorld();                        // pushes crate shadows into L.shadow, so flush L after it
-  for (const k in L) L[k].flush();
-  for (const k in E) E[k].flush();
-  writeGates();
+  W.shadow.reset();
+  writeCandle();          // pushes the candle shadow into W.shadow
+  writeWorld();           // ...so W is flushed after it
+  writeArches();
   updatePops(dt);
 
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.style.opacity = '0'; }
@@ -1391,8 +1413,8 @@ function tick(dt, draw = true) {
 function boot() {
   const b = $('boot');
   if (b) b.classList.add('hidden');
-  S.best = Math.max(S.best, S.ascent);
-  startAscent();
+  S.best = Math.max(S.best, S.level);
+  startLevel();
   // rAF does not fire in a hidden tab; this seam lets a harness drive frames.
   if (location.search.indexOf('debug') >= 0) {
     window.__CR = {
@@ -1403,52 +1425,61 @@ function boot() {
          Real rAF frames run between page load and the first advance(), and how
          many of them depends on how fast this particular machine boots the
          bundle - which quietly makes every recorded number a function of the
-         test runner's mood. It cost an afternoon: the golden was recorded on a
-         slow build, and making the build faster then "broke" it, because the
-         run had simply had less free time to accumulate before the harness
-         took over.
+         test runner's mood. It cost an afternoon on the previous game: the
+         golden was recorded on a slow build, and making the build faster then
+         "broke" it, because the run had simply had less free time to
+         accumulate before the harness took over.
 
-         freeze() stops the rAF tick and restarts the ascent, so advance(n) is
+         freeze() stops the rAF tick and restarts the level, so advance(n) is
          exactly n seconds from a clean start, every time, on any machine. */
-      freeze: () => { harnessFrozen = true; startAscent(); },
+      freeze: () => { harnessFrozen = true; startLevel(); },
 
       /* Only the last frame of a run is drawn.
 
-         Measured: a tick costs 0.28 ms with a real GPU and ~17 ms on the
-         software rasteriser a headless browser falls back to, and forty
-         simulated seconds is 2,500 ticks. Drawing every one of them is the
-         difference between 0.7 s and a test timeout. Nothing in
-         renderer.render() feeds back into game state, so dropping the
-         intermediate frames changes no number the harness reads - and drawing
-         the last one keeps renderer.info.render.calls and every InstancedMesh
-         count honest afterwards.
-
-         Pass draw = false when polling in a loop. A test that samples the road
-         every half second over four ascents makes a thousand advance() calls,
-         and one rendered frame each is a thousand software-rasterised frames
-         for nothing - twelve seconds locally and past the test timeout on a
-         two-core CI runner. */
+         Measured on the previous game on this stack: a tick costs 0.28 ms with
+         a real GPU and ~17 ms on the software rasteriser a headless browser
+         falls back to, and forty simulated seconds is 2,500 ticks. Drawing
+         every one of them is the difference between 0.7 s and a test timeout.
+         Nothing in renderer.render() feeds back into game state, so dropping
+         the intermediate frames changes no number the harness reads - and
+         drawing the last one keeps renderer.info.render.calls and every
+         InstancedMesh count honest afterwards. */
       advance: (secs, step, draw = true) => {
         const d = step || 0.016;
         const n = Math.max(1, Math.round(secs / d));
         for (let i = 0; i < n; i++) tick(d, draw && i === n - 1);
       },
-      state: () => ({ z: run.z, crew: run.crew, gold: Math.floor(run.gold), iron: Math.floor(run.iron),
-        tier: weaponTier(), dps: Math.floor(squadDPS()), enemies: enemies.length, crates: crates.length,
-        gates: gates.length, boss: boss ? Math.round(boss.hp) : null, over: run.over, calls: renderer.info.render.calls }),
+      state: () => ({
+        z: run.z, wax: +CD.totalWax(run.candle).toFixed(4), layers: run.candle.length,
+        colours: CD.colourCount(run.candle), pairs: CD.contrastPairs(run.candle),
+        lop: +CD.avgLop(run.candle).toFixed(4), radius: +CD.candleRadius(run.candle).toFixed(4),
+        wick: +run.wick.toFixed(3), lit: run.lit,
+        dipped: run.dipped, shaved: +run.shaved.toFixed(3), scents: S.scents.length,
+        drips: drips.length, blades: blades.length, lamps: lamps.length,
+        pools: pools.length, flasks: flasks.length, arches: arches.length,
+        over: run.over, coins: S.coins, level: S.level,
+        calls: renderer.info.render.calls,
+      }),
       steer: (x) => { run.targetX = x; },
-      /* Live entity lists and the tuning table. Every balance number in this
-         game was found by editing T here, replaying an ascent through
-         advance(), and reading the curve back - not by playing it forty
-         times. Keep them exposed. */
-      T, enemies: () => enemies, gates: () => gates, boss: () => boss,
-      three: THREE, scene, renderer, L, E, W, OUTLINE_MAT,
+      /* Live entity lists, the candle itself and the tuning table. Every
+         balance number in this game is meant to be found by editing T here,
+         replaying a level through advance(), and reading the curve back - not
+         by playing it forty times. Keep them exposed. */
+      T, WAXES, SCENTS,
+      candle: () => run.candle,
+      appraisal: () => lastAppraisal,
+      appraiseNow: (delivered = true) =>
+        appraise(run.candle, { delivered, valueMul: valueMul(), priceMul: priceMul() }),
+      drips: () => drips, blades: () => blades, lamps: () => lamps,
+      pools: () => pools, flasks: () => flasks, arches: () => arches,
+      three: THREE, scene, camera, renderer, C, W, flameLight, OUTLINE_MAT,
     };
   }
-  if (S.seenCamp) {
-    // returning player lands in the camp so they can spend first
+  if (S.seenShop) {
+    // returning player lands in the workshop so they can spend first
     run.active = false;
-    openCamp('MOUNTAIN CAMP', `ASCENT ${S.ascent}  ·  BEST ${S.best}`);
+    $('appraisal').classList.add('hidden');
+    openShop('THE CHANDLERY', `WORKSHOP ${S.level}  ·  BEST ${S.best}`);
   }
   requestAnimationFrame(frame);
 }

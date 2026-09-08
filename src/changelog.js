@@ -8,34 +8,27 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '0.3.0';
+export const VERSION = '1.0.0';
 
 export const CHANGELOG = [
   {
-    version: '0.3.0', date: '2026-09-07', title: 'The mountain wakes up',
+    version: '1.0.0', date: '2026-09-07', title: 'Wick',
     notes: [
-      'Brutes are real. Big purple draugr that take two of your crew - they were written into the game from the start and had never once spawned.',
-      'Gates can hurt now. Some offer a genuine loss against a doubling, and the good side is no longer always the same side.',
-      'Draugr, crates and shrines use the whole road instead of hugging the left.',
-      'The warband fights the Jotunn instead of the stragglers in front of it.',
-      'Axes fan out across the nearest few draugr rather than five into one.',
-      'Trees and boulders along the trail, roughly twice as many as before.'
+      'You are a candle. Dip through arches of coloured wax and carry the best candle you can to the chandler.',
+      'Layers are visible: every dip is a ring on the candle, widest and newest at the bottom, wick at the top.',
+      'Blades shave wax off one side and leave you crooked. Heat lamps melt you evenly. Water snuffs your wick.',
+      'Your flame is the only real light in the room, and it dims as the candle shrinks.',
+      'A snuffed wick relights in the heat of a lamp - the hazard you were dodging is the one you need.',
+      'The chandler pays for bulk, for how many colours you carried, and for whether they actually contrast.',
+      'Six scents to find, each hidden inside a hazard, each a permanent perk. They are never sold.',
+      'Four workshops, and each one is darker than the last.'
     ]
   },
   {
-    version: '0.2.0', date: '2026-09-07', title: 'Built to be continued',
+    version: '0.3.0', date: '2026-09-07', title: 'Before this was Wick',
     notes: [
-      'Updates now install themselves - no more stale builds after a deploy.',
-      'A version number and this list, so you can see what changed.'
-    ]
-  },
-  {
-    version: '0.1.0', date: '2026-09-07', title: 'First ascent',
-    notes: [
-      'Lead a warband up the mountain, steer with one thumb.',
-      'Gates that grow or cut the crew, draugr that charge, a jotunn at the top.',
-      'Iron forges the axe within a run; gold buys upgrades at the camp.',
-      'Runes and blessings, sealed until the fourth ascent.'
+      'This repo used to hold Captain Run, a viking crowd-runner, through v0.3.0.',
+      'The build, the tests and the shape of the game carried over; the vikings did not.'
     ]
   }
 ];

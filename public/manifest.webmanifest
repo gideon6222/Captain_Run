@@ -1,15 +1,23 @@
 {
-  "name": "Captain Run",
-  "short_name": "Captain Run",
-  "description": "Lead a viking warband up the mountain. Grow the crew, forge the axe, break the jotunn.",
+  "name": "Wick",
+  "short_name": "Wick",
+  "description": "Dip a candle through arches of coloured wax, dodge the blades and the heat, and carry the best candle you can to the chandler.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
-  "display_override": ["fullscreen", "standalone"],
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
   "orientation": "portrait",
-  "background_color": "#0b1420",
-  "theme_color": "#8fd4ef",
+  "background_color": "#1a1024",
+  "theme_color": "#3b2340",
   "icons": [
-    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
   ]
 }

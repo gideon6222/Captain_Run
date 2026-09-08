@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0b1420">
+<meta name="theme-color" content="#3b2340">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Captain Run</title>
+<title>Wick</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- The error overlay handler must come BEFORE the entry script.
@@ -35,45 +35,16 @@
 </script>
 
 <style>
-  /* Version, patch notes and build stamp, at the bottom of the camp.
-
-     The stamp is how a deploy is verified on the phone: an installed PWA can
-     be a load behind, and the game looks identical between builds, so there is
-     otherwise nothing to check. The version and notes answer the different
-     question of what actually changed. */
-  .verline{
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,244,220,.14);
-    font-size:12.5px; font-weight:700; letter-spacing:.1em; color:var(--iron);
-  }
-  .notesbtn{
-    border:1px solid rgba(143,211,255,.4); background:rgba(143,211,255,.1); color:var(--iron);
-    border-radius:9px; padding:7px 11px; font-size:10.5px; font-weight:700; letter-spacing:.09em;
-  }
-  .notes{max-height:210px; overflow-y:auto; margin-top:10px;}
-  .notes.hidden{display:none;}
-  .rel{padding:9px 0; border-top:1px solid rgba(255,244,220,.12);}
-  .rel:first-child{border-top:none;}
-  .relhead{font-size:11.5px; font-weight:700; letter-spacing:.06em; color:var(--ink);}
-  .relhead .v{color:var(--gold);}
-  .relhead .d{color:var(--dim); font-weight:500;}
-  .rel ul{margin:5px 0 0; padding-left:15px; color:var(--dim); font-size:11px; line-height:1.6;}
-  .stamp{
-    margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,244,220,.12);
-    font:10.5px/1.5 ui-monospace,"Cascadia Mono",Consolas,monospace;
-    color:var(--dim); letter-spacing:.02em; text-align:center;
-  }
-
   :root{
-    --ink:#fff4dc; --dim:#a08a6e; --gold:#ffc93c; --iron:#8fd3ff; --rune:#c17bff;
+    --ink:#fff4dc; --dim:#a4886a; --gold:#ffc93c; --flame:#ffb861; --cool:#8fd3ff;
     --red:#ff4d5e; --green:#5ce07a;
-    --wood:#3a2418; --wood2:#241408; --edge:#120803;
+    --wood:#3a2418; --wood2:#241408; --edge:#150a04;
     --safe-t: env(safe-area-inset-top, 0px);
     --safe-b: env(safe-area-inset-bottom, 0px);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{
-    margin:0; padding:0; height:100%; overflow:hidden; background:#0b1420; color:var(--ink);
+    margin:0; padding:0; height:100%; overflow:hidden; background:#1a1024; color:var(--ink);
     font-family:"Segoe UI",system-ui,-apple-system,sans-serif; font-weight:800;
     user-select:none; -webkit-user-select:none; touch-action:none; overscroll-behavior:none;
   }
@@ -91,51 +62,43 @@
     box-shadow:0 4px 0 var(--edge), inset 0 2px 0 rgba(255,255,255,.13);
     padding:5px 9px;
   }
-  #ascent{font-size:15px; letter-spacing:.05em; line-height:1.05;}
-  #ascent small{display:block; font-size:9.5px; color:var(--dim); letter-spacing:.16em; font-weight:800;}
+  #level{font-size:15px; letter-spacing:.05em; line-height:1.05;}
+  #level small{display:block; font-size:9px; color:var(--dim); letter-spacing:.14em; font-weight:800;}
 
   #res{display:flex; gap:11px; align-items:center;}
   .r{display:flex; align-items:center; gap:5px; font-size:14px;}
   .pip{width:15px; height:15px; border:2px solid var(--edge); border-radius:4px; flex:none;}
   .pip.g{background:linear-gradient(#ffe07a,#f0a01a); border-radius:50%;}
-  .pip.i{background:linear-gradient(#cfeaff,#4aa6e0);}
-  .pip.r{background:linear-gradient(#e7b6ff,#8b3fd6); transform:rotate(45deg); border-radius:3px;}
+  .pip.w{background:linear-gradient(#fff2d0,#d8b478);}
 
-  #progWrap{margin:9px auto 0; width:min(94%,380px);}
-  #prog{
+  /* Progress to the bench, and the wick clock under it. Two bars, because they
+     answer different questions: how far, and how long. */
+  #bars{margin:9px auto 0; width:min(94%,380px);}
+  #prog, #wick{
     position:relative; height:15px; border:3px solid var(--edge); border-radius:9px;
     background:#20140a; overflow:hidden; box-shadow:0 3px 0 var(--edge);
   }
-  #prog i{position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(#8ef0a4,#2e9c4e);}
-  #prog b{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:9px; letter-spacing:.14em;}
-  #progWrap.boss #prog i{background:linear-gradient(#ff8a8a,#c01f30);}
+  #wick{height:13px; margin-top:5px;}
+  #prog i,#wick i{position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(#ffe6a8,#e0a040);}
+  #prog i{background:linear-gradient(#a8e0ff,#3f8fd0);}
+  #prog b,#wick b{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:9px; letter-spacing:.12em;}
 
-  /* crew, left */
-  #crewBox{position:fixed; left:12px; top:calc(var(--safe-t) + 104px); text-align:center;}
-  #crewN{font-size:34px; line-height:.95; color:#fff;}
-  #crewBox small{font-size:9.5px; letter-spacing:.18em; color:var(--dim);}
+  /* wax + grade, left */
+  #waxBox{position:fixed; left:12px; top:calc(var(--safe-t) + 112px); text-align:center;}
+  #waxN{font-size:34px; line-height:.95; color:#fff;}
+  #waxBox small{font-size:9px; letter-spacing:.16em; color:var(--dim); display:block;}
+  #gradeN{font-size:13px; letter-spacing:.09em; color:var(--gold); margin-top:5px;}
 
-  /* weapon card, right */
-  #card{
-    position:fixed; right:10px; top:calc(var(--safe-t) + 96px); width:116px;
-    border:3px solid var(--edge); border-radius:14px; padding:6px 6px 8px; text-align:center;
-    background:linear-gradient(#b8362f,#7a1a1c);
-    box-shadow:0 5px 0 var(--edge), inset 0 2px 0 rgba(255,255,255,.18);
-  }
-  #card .lbl{font-size:8.5px; letter-spacing:.2em; color:#ffd9b0;}
-  #wIcon{height:46px; margin:2px 0 0; display:block;}
-  #wName{font-size:10px; letter-spacing:.04em; line-height:1.1; margin-top:1px; color:#ffe9c6;}
-  #dps{font-size:23px; color:#7dff9b; line-height:1.1; margin-top:1px;}
-  #forge{
-    margin:5px 3px 0; height:11px; border:2px solid var(--edge); border-radius:6px;
-    background:#3d1010; overflow:hidden; position:relative;
-  }
-  #forge i{position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(#cfeaff,#3f9fe0);}
-  #forge b{position:absolute; inset:0; font-size:7.5px; display:flex; align-items:center; justify-content:center; letter-spacing:.1em;}
+  /* the layer stack, mirroring the candle. Newest on top, exactly as the
+     candle is banded, so the two never have to be reconciled by the player. */
+  #stackBox{position:fixed; right:12px; top:calc(var(--safe-t) + 108px); width:56px; text-align:center;}
+  #stackBox small{font-size:8.5px; letter-spacing:.14em; color:var(--dim); display:block; margin-bottom:4px;}
+  #stack{display:flex; flex-direction:column; align-items:center; gap:2px;}
+  #stack i{display:block; width:34px; border:2px solid var(--edge); border-radius:3px;}
 
   #toast{
-    position:fixed; left:0; right:0; top:31%; text-align:center; font-size:26px;
-    opacity:0; transition:opacity .25s; color:var(--gold);
+    position:fixed; left:0; right:0; top:31%; text-align:center; font-size:25px;
+    opacity:0; transition:opacity .25s; color:var(--flame);
   }
   #hint{
     position:fixed; left:0; right:0; bottom:calc(var(--safe-b) + 26px); text-align:center;
@@ -145,23 +108,44 @@
   #pops{position:fixed; inset:0; pointer-events:none; overflow:hidden;}
   .pop{position:absolute; font-size:17px; will-change:transform,opacity; white-space:nowrap;}
 
-  /* camp */
+  /* the workshop */
   .modal{position:fixed; inset:0; z-index:20; display:flex; align-items:flex-end; justify-content:center;
-    background:rgba(6,10,16,.72); backdrop-filter:blur(3px); padding:0;}
+    background:rgba(10,6,14,.8); backdrop-filter:blur(3px); padding:0;}
   .modal.hidden{display:none;}
   .sheet{
     width:100%; max-width:520px; max-height:94vh; overflow:auto; padding:16px 14px calc(var(--safe-b) + 16px);
-    background:linear-gradient(#3f2818,#20120a);
+    background:linear-gradient(#3f2818,#1c100a);
     border:4px solid var(--edge); border-bottom:none; border-radius:20px 20px 0 0;
     box-shadow:0 -8px 30px rgba(0,0,0,.6);
   }
   .sheet::-webkit-scrollbar{display:none;}
   .shead{position:sticky; top:-16px; margin:-16px -14px 10px; padding:14px 14px 10px;
-    background:linear-gradient(#4a2f1e,#331d0e); border-bottom:3px solid var(--edge); z-index:2;}
+    background:linear-gradient(#4a2f1e,#301c0e); border-bottom:3px solid var(--edge); z-index:2;}
   .shead h2{margin:0; font-size:20px; letter-spacing:.06em;}
   .shead .sub{font-size:11px; color:var(--dim); letter-spacing:.1em; margin-top:2px;}
-  .shead .bal{display:flex; gap:12px; margin-top:8px; font-size:14px;}
+  .shead .bal{display:flex; gap:14px; margin-top:8px; font-size:14px;}
   .shead .bal span{display:flex; align-items:center; gap:5px;}
+  .shead .bal em{font-style:normal; color:var(--dim); font-size:10px; letter-spacing:.1em;}
+
+  /* the appraisal */
+  #appraisal{
+    margin:2px 0 14px; padding:12px; border:3px solid var(--edge); border-radius:14px;
+    background:linear-gradient(#2a1a10,#150c07); box-shadow:inset 0 2px 0 rgba(255,255,255,.08);
+  }
+  #appraisal.hidden{display:none;}
+  .apgrade{text-align:center; font-size:27px; letter-spacing:.1em; margin-bottom:9px; color:var(--gold);}
+  .apgrade.gM{color:#b9f0ff;} .apgrade.gF{color:#ffd66a;} .apgrade.gG{color:#a6e88a;}
+  .apgrade.gP{color:#e0c9a0;} .apgrade.gR{color:#d09a70;} .apgrade.gS{color:#9a8574;}
+  .aprow{display:flex; align-items:baseline; gap:8px; padding:4px 0; font-size:12px;
+    border-top:1px solid rgba(255,244,220,.10);}
+  .aprow:first-child{border-top:none;}
+  .apk{width:78px; flex:none; color:#e0a95c; letter-spacing:.11em; font-size:10.5px;}
+  .apd{flex:1; color:var(--dim); font-weight:700;}
+  .apv{color:var(--ink); font-size:13px;}
+  .aptot{display:flex; justify-content:space-between; align-items:center; margin-top:9px; padding-top:9px;
+    border-top:2px solid rgba(255,244,220,.2); font-size:16px;}
+  .aptot span{font-size:10.5px; letter-spacing:.14em; color:#e0a95c;}
+  .aptot b{font-size:23px; color:var(--gold);}
 
   .counter{margin-top:12px;}
   .counter h3{
@@ -185,6 +169,16 @@
   .up.locked{opacity:.62;}
   .up.locked .upic{background:#2b1c11;}
   .lockmsg{font-size:11px; color:#e08a5c; font-weight:700;}
+
+  /* the scent shelf */
+  .scent{display:flex; align-items:center; gap:9px; padding:6px 0;}
+  .sic{width:30px; height:30px; flex:none; border:3px solid var(--edge); border-radius:8px;
+    display:flex; align-items:center; justify-content:center; font-size:15px; background:#4a2f1e;}
+  .sname{font-size:12px;}
+  .seff{font-size:10px; color:#c0a184; margin-top:1px; font-weight:700;}
+  .scent.miss{opacity:.5;}
+  .scent.miss .sic{background:#241609; color:#7a5e42;}
+
   .go{
     width:100%; margin-top:16px; border:4px solid var(--edge); border-radius:14px; padding:15px;
     font-size:16px; letter-spacing:.12em; font-weight:800; font-family:inherit;
@@ -192,11 +186,44 @@
   }
   .go:active{transform:translateY(4px); box-shadow:0 2px 0 var(--edge);}
 
+  /* Version, patch notes and build stamp, at the bottom of the workshop.
+
+     The stamp is how a deploy is verified on the phone: an installed PWA can
+     be a load behind, and the game looks identical between builds, so there is
+     otherwise nothing to check. The version and notes answer the different
+     question of what actually changed. */
+  .verline{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,244,220,.14);
+    font-size:12.5px; font-weight:700; letter-spacing:.1em; color:var(--flame);
+  }
+  .notesbtn{
+    border:1px solid rgba(255,184,97,.4); background:rgba(255,184,97,.1); color:var(--flame);
+    border-radius:9px; padding:7px 11px; font-size:10.5px; font-weight:700; letter-spacing:.09em;
+  }
+  .notes{max-height:210px; overflow-y:auto; margin-top:10px;}
+  .notes.hidden{display:none;}
+  .rel{padding:9px 0; border-top:1px solid rgba(255,244,220,.12);}
+  .rel:first-child{border-top:none;}
+  .relhead{font-size:11.5px; font-weight:700; letter-spacing:.06em; color:var(--ink);}
+  .relhead .v{color:var(--gold);}
+  .relhead .d{color:var(--dim); font-weight:500;}
+  .rel ul{margin:5px 0 0; padding-left:15px; color:var(--dim); font-size:11px; line-height:1.6;}
+  .stamp{
+    margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,244,220,.12);
+    font:10.5px/1.5 ui-monospace,"Cascadia Mono",Consolas,monospace;
+    color:var(--dim); letter-spacing:.02em; text-align:center;
+  }
+
   #flash{position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .25s; z-index:30;}
   #vig{position:fixed; inset:0; pointer-events:none; opacity:0; z-index:29;
     box-shadow:inset 0 0 55px 2px rgba(210,25,45,.95); transition:opacity .2s;}
-  #boot{position:fixed; inset:0; z-index:40; background:#0b1420; display:flex; align-items:center;
-    justify-content:center; flex-direction:column; gap:8px; color:var(--gold); font-size:22px; letter-spacing:.2em;}
+  /* Snuffed. Slow in, fast out: arriving in the dark should feel like
+     something closing, and relighting should feel instant. */
+  #dark{position:fixed; inset:0; pointer-events:none; opacity:0; z-index:28; background:#050208;
+    transition:opacity .5s ease-in;}
+  #boot{position:fixed; inset:0; z-index:40; background:#1a1024; display:flex; align-items:center;
+    justify-content:center; flex-direction:column; gap:8px; color:var(--flame); font-size:26px; letter-spacing:.3em;}
   #boot.hidden{display:none;}
   #err{position:fixed; inset:0; z-index:99; background:#180508; color:#ffb0b8; padding:20px;
     font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow:auto; font-weight:400;}
@@ -210,47 +237,54 @@
 
 <div id="hud">
   <div class="toprow">
-    <div class="panel out" id="ascent">1<small>ASCENT</small></div>
+    <div class="panel out" id="level">1<small>WORKSHOP</small></div>
     <div class="panel" id="res">
-      <div class="r out"><span class="pip g"></span><span id="gold">0</span></div>
-      <div class="r out"><span class="pip i"></span><span id="iron">0</span></div>
-      <div class="r out"><span class="pip r"></span><span id="rune">0</span></div>
+      <div class="r out"><span class="pip g"></span><span id="coins">0</span></div>
     </div>
   </div>
-  <div id="progWrap"><div id="prog"><i></i><b class="out">TO THE JOTUNN</b></div></div>
+  <div id="bars">
+    <div id="prog"><i></i><b class="out">TO THE BENCH</b></div>
+    <div id="wick"><i></i><b class="out">WICK</b></div>
+  </div>
 </div>
 
-<div id="crewBox" class="out"><div id="crewN">3</div><small>CREW</small></div>
+<div id="waxBox" class="out">
+  <div id="waxN">7</div><small>WAX</small>
+  <div id="gradeN">STUB</div>
+</div>
 
-<div id="card">
-  <div class="lbl out">EQUIPPED</div>
-  <svg id="wIcon" viewBox="0 0 100 100">
-    <g id="wg">
-      <rect x="45" y="16" width="10" height="72" rx="3" fill="#6b431f" stroke="#120803" stroke-width="5"/>
-      <path id="wblade" d="M30 26 Q50 12 70 26 L70 46 Q50 34 30 46 Z" fill="#c9d6e0" stroke="#120803" stroke-width="5" stroke-linejoin="round"/>
-    </g>
-  </svg>
-  <div id="wName" class="out">RUSTED AXE</div>
-  <div id="dps" class="out">0</div>
-  <div id="forge"><i></i><b class="out">FORGE</b></div>
+<div id="stackBox" class="out">
+  <small>LAYERS</small>
+  <div id="stack"></div>
 </div>
 
 <div id="toast" class="out"></div>
 <div id="hint" class="out">DRAG TO STEER</div>
 <div id="pops"></div>
 
-<div id="camp" class="modal hidden">
+<div id="shopScreen" class="modal hidden">
   <div class="sheet">
     <div class="shead">
-      <h2 class="out" id="campTitle">MOUNTAIN CAMP</h2>
-      <div class="sub" id="campSub">THE CREW RESTS</div>
+      <h2 class="out" id="shopTitle">THE CHANDLERY</h2>
+      <div class="sub" id="shopSub">THE BENCH IS QUIET</div>
       <div class="bal out">
-        <span><i class="pip g"></i> <b id="cGold">0</b></span>
-        <span><i class="pip r"></i> <b id="cRune">0</b></span>
+        <span><i class="pip g"></i> <b id="sCoins">0</b></span>
+        <span><em>BEST</em> <b id="sBest">0</b></span>
+        <span><em>SCENTS</em> <b id="scentCount">0/6</b></span>
       </div>
     </div>
+
+    <div id="appraisal" class="hidden">
+      <div class="apgrade out" id="apGrade">STUB</div>
+      <div id="apRows"></div>
+      <div class="aptot out"><span>PAID</span><b id="apTotal">0</b></div>
+    </div>
+
     <div id="shop"></div>
-    <button class="go out" id="btnGo">SET OUT</button>
+
+    <div class="counter"><h3>THE SCENT SHELF</h3><div id="scents"></div></div>
+
+    <button class="go out" id="btnGo">START DIPPING</button>
     <div class="verline">
       <span id="verNum">v0.0.0</span>
       <button id="btnNotes" class="notesbtn">WHAT&apos;S NEW</button>
@@ -260,9 +294,10 @@
   </div>
 </div>
 
+<div id="dark"></div>
 <div id="vig"></div>
 <div id="flash"></div>
-<div id="boot" class="out">CAPTAIN RUN</div>
+<div id="boot" class="out">WICK</div>
 <div id="err" class="hidden"></div>
 
 <script type="module" src="/src/main.js"></script>

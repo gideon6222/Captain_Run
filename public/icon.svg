@@ -1,21 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#8fd4ef"/>
-      <stop offset="1" stop-color="#dff2ff"/>
+    <linearGradient id="room" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8a765"/>
+      <stop offset="0.62" stop-color="#3b2340"/>
+      <stop offset="1" stop-color="#241241"/>
     </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffd68c" stop-opacity="0.95"/>
+      <stop offset="0.4" stop-color="#ffa03c" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#ff7a1e" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect width="512" height="512" fill="url(#sky)"/>
-  <!-- mountain -->
-  <path d="M-20 400 L150 210 L250 330 L330 240 L540 400 Z" fill="#6f8fa8"/>
-  <!-- road -->
-  <path d="M196 512 L316 512 L288 300 L224 300 Z" fill="#9a8763" stroke="#140a06" stroke-width="12" stroke-linejoin="round"/>
-  <!-- helmet -->
-  <g transform="translate(256 268)">
-    <rect x="-52" y="-6" width="104" height="62" rx="10" fill="#f2c79a" stroke="#140a06" stroke-width="14"/>
-    <rect x="-62" y="-52" width="124" height="56" rx="12" fill="#a9b6c4" stroke="#140a06" stroke-width="14"/>
-    <path d="M-62 -34 q-46 -12 -52 -50 q34 6 52 26 Z" fill="#f2e8cf" stroke="#140a06" stroke-width="14" stroke-linejoin="round"/>
-    <path d="M62 -34 q46 -12 52 -50 q-34 6 -52 26 Z" fill="#f2e8cf" stroke="#140a06" stroke-width="14" stroke-linejoin="round"/>
-    <rect x="-40" y="24" width="80" height="34" rx="8" fill="#c0722a" stroke="#140a06" stroke-width="14"/>
+  <rect width="512" height="512" fill="url(#room)"/>
+
+  <!-- the light the candle casts, which is the whole game -->
+  <circle cx="256" cy="196" r="210" fill="url(#glow)"/>
+
+  <!-- the stepped tower: newest and widest ring at the bottom, wick at the top,
+       every band visible at once. Same silhouette the game draws. -->
+  <g stroke="#150a04" stroke-width="14" stroke-linejoin="round">
+    <rect x="176" y="392" width="160" height="76" rx="6" fill="#2fb98a"/>
+    <rect x="192" y="330" width="128" height="70" rx="6" fill="#d6314a"/>
+    <rect x="208" y="252" width="96"  height="86" rx="6" fill="#f0e3c2"/>
   </g>
+  <!-- wick -->
+  <rect x="248" y="212" width="16" height="48" rx="6" fill="#2a1c12" stroke="#150a04" stroke-width="8"/>
+  <!-- flame: an orange body with a white-hot heart, as in game -->
+  <path d="M256 96 q46 68 46 100 a46 46 0 0 1 -92 0 q0 -32 46 -100 Z" fill="#ff8a26"/>
+  <path d="M256 146 q22 42 22 58 a22 22 0 0 1 -44 0 q0 -16 22 -58 Z" fill="#fff0c8"/>
 </svg>

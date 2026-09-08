@@ -8,27 +8,31 @@
    The music is a slow 8-note theme on a horn with a 0.3s attack, over a tom
    heartbeat and a three-oscillator drone. The attack is the whole trick: a
    short attack on a synthesised note is a beep, and beeps were the one thing
-   Gideon named as bad in the Coreward playtest. It drops an octave in the boss
-   phase - same theme, same tempo, so it reads as the same music getting
-   heavier rather than as a different track starting. */
+   Gideon named as bad in the Coreward playtest.
+
+   It drops an octave while the wick is out - same theme, same tempo, so being
+   snuffed reads as the music going under water rather than as a different
+   track starting. That is the same hook the previous game used for its boss
+   phase, pointed at the one moment in this one where the player has lost
+   something and needs telling without a caption. */
 
 export interface SfxHooks {
-  /* Read live, not passed once: the boss phase starts mid-run. */
-  isBossPhase: () => boolean;
+  /* Read live, not passed once: the flame goes out mid-run. */
+  isDark: () => boolean;
 }
 
 export interface Sfx {
   init(): void;
-  throwAxe(): void;
-  hit(): void;
-  smash(): void;
-  kill(): void;
-  ping(): void;
-  gate(good: boolean): void;
-  forge(): void;
-  hurt(): void;
-  horn(): void;
-  boom(): void;
+  dip(): void;         // through a wax arch
+  drip(): void;        // a droplet collected
+  scrape(): void;      // a blade takes wax
+  sizzle(): void;      // melting under a heat lamp
+  douse(): void;       // water snuffs the wick
+  relight(): void;
+  scent(): void;       // a flask found
+  sell(good: boolean): void;
+  coin(): void;
+  bench(): void;       // arriving at the chandler
 }
 
 export function createSfx(hooks: SfxHooks): Sfx {
@@ -112,7 +116,7 @@ export function createSfx(hooks: SfxHooks): Sfx {
       // horn theme, one note every 2 beats
       if (s % 4 === 0) {
         const idx = Math.floor(step / 4) % 8;
-        const semi = THEME[idx] + (hooks.isBossPhase() ? -12 : 0);
+        const semi = THEME[idx] + (hooks.isDark() ? -12 : 0);
         const f = 146.83 * Math.pow(2, semi / 12);
         horn(t, f);
       }
@@ -149,29 +153,62 @@ export function createSfx(hooks: SfxHooks): Sfx {
 
   return {
     init,
-    throwAxe() { noise(0.09, 2600 + Math.random() * 900, 2, 0.05, 'highpass'); },
-    hit() { tone(180 + Math.random() * 120, 0.09, 'square', 0.06); },
-    smash() { noise(0.24, 700 + Math.random() * 400, 1.2, 0.2, 'bandpass'); },
-    kill() { noise(0.34, 320, 0.9, 0.25); tone(90, 0.3, 'sawtooth', 0.1); },
-    ping() {
-      /* Loot lands in bursts of fourteen. Without this gate they arrive inside
-         a millisecond of each other and sum into one loud click. */
+    /* A soft wet thud with a rising tail: wax closing over wax. Pitch and
+       filter are jittered on everything repeatable, or the fourth droplet in a
+       second turns the game into a machine. */
+    dip() {
+      noise(0.26, 380 + Math.random() * 120, 1.1, 0.2, 'lowpass');
+      setTimeout(() => tone(196 * (0.98 + Math.random() * 0.06), 0.34, 'triangle', 0.09, 0.02), 40);
+    },
+    drip() {
       if (!ac) return;
       const now = ac.currentTime;
-      if (now - lastPing < 0.055) return;
+      if (now - lastPing < 0.05) return;   // droplets arrive in clusters
       lastPing = now;
-      tone(880 * (0.85 + Math.random() * 0.5), 0.08, 'triangle', 0.045);
+      tone(660 * (0.86 + Math.random() * 0.5), 0.09, 'triangle', 0.042);
     },
-    gate(good: boolean) {
-      if (good) { tone(523, 0.14, 'triangle', 0.11); setTimeout(() => tone(784, 0.2, 'triangle', 0.1), 80); }
-      else { tone(200, 0.3, 'sawtooth', 0.11); }
+    scrape() {
+      noise(0.19, 2300 + Math.random() * 900, 3.5, 0.14, 'bandpass');
+      tone(150 + Math.random() * 60, 0.16, 'sawtooth', 0.07);
     },
-    forge() {
-      noise(0.3, 900, 1, 0.22);
-      setTimeout(() => { tone(392, 0.5, 'triangle', 0.13, 0.01); tone(587, 0.5, 'triangle', 0.1, 0.01); }, 60);
+    /* Deliberately quiet and continuous-sounding. Heat is a place you may
+       choose to stand in, so its sound has to be bearable for a second or two
+       rather than an alarm. */
+    sizzle() {
+      if (!ac) return;
+      const now = ac.currentTime;
+      if (now - lastPing < 0.12) return;
+      lastPing = now;
+      noise(0.2, 5200 + Math.random() * 1800, 1.6, 0.035, 'highpass');
     },
-    hurt() { tone(160, 0.34, 'sawtooth', 0.14, 0.005); },
-    horn() { if (!ac) return; horn(ac.currentTime, 98); },
-    boom() { noise(0.7, 180, 0.7, 0.34, 'lowpass'); tone(60, 0.8, 'sine', 0.2); },
+    douse() {
+      noise(0.5, 900, 0.8, 0.26, 'lowpass');
+      setTimeout(() => tone(120, 0.42, 'sine', 0.1, 0.005), 30);
+    },
+    relight() {
+      noise(0.22, 1600, 1.0, 0.13, 'bandpass');
+      setTimeout(() => { tone(523, 0.3, 'triangle', 0.09, 0.02); tone(784, 0.3, 'triangle', 0.07, 0.02); }, 50);
+    },
+    scent() {
+      tone(659, 0.22, 'triangle', 0.1, 0.01);
+      setTimeout(() => tone(988, 0.34, 'triangle', 0.09, 0.01), 90);
+      setTimeout(() => tone(1319, 0.5, 'triangle', 0.06, 0.02), 190);
+    },
+    sell(good: boolean) {
+      if (good) {
+        noise(0.3, 1200, 1, 0.16);
+        setTimeout(() => { tone(392, 0.6, 'triangle', 0.12, 0.02); tone(587, 0.6, 'triangle', 0.09, 0.02); }, 60);
+      } else {
+        tone(196, 0.4, 'sawtooth', 0.11, 0.01);
+      }
+    },
+    coin() {
+      if (!ac) return;
+      const now = ac.currentTime;
+      if (now - lastPing < 0.04) return;
+      lastPing = now;
+      tone(1046 * (0.94 + Math.random() * 0.14), 0.07, 'triangle', 0.04);
+    },
+    bench() { if (!ac) return; horn(ac.currentTime, 98); },
   };
 }

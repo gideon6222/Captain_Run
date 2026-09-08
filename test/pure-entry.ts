@@ -8,4 +8,6 @@
 
 export * from '../src/util';
 export * from '../src/tuning';
+export * from '../src/candle';
+export * from '../src/appraise';
 export * from '../src/changelog.js';
