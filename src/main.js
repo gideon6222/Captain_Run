@@ -2,6 +2,7 @@
 // Five files, no build step. See NOTES.md in the repo for design decisions.
 
 import * as THREE from 'three';
+import { VERSION, CHANGELOG } from './changelog.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TUNING — every number that shapes how it feels lives here.
@@ -785,6 +786,7 @@ function openCamp(title, sub) {
   $('campTitle').textContent = title;
   $('campSub').textContent = sub;
   renderShop();
+  showBuildInfo();
   campEl.classList.remove('hidden');
   S.seenCamp = true;
   save();
@@ -839,6 +841,33 @@ $('btnGo').addEventListener('click', () => {
   campEl.classList.add('hidden');
   startAscent();
 });
+
+// ── version, patch notes and build stamp ─────────────────────────────────────
+// Rendered once: a changelog does not change while the game is running, and
+// rebuilding it every time the camp opens is pure churn.
+let notesBuilt = false;
+function showBuildInfo() {
+  $('verNum').textContent = 'v' + VERSION;
+  const sha = typeof __BUILD_SHA__ === 'string' ? __BUILD_SHA__ : 'dev';
+  let when = 'unbuilt';
+  if (typeof __BUILD_TIME__ === 'string') {
+    const d = new Date(__BUILD_TIME__);
+    when = isNaN(d.getTime()) ? __BUILD_TIME__
+      : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+  $('build').textContent = 'build ' + sha + '  ·  ' + when;
+  if (notesBuilt) return;
+  notesBuilt = true;
+  $('notes').innerHTML = CHANGELOG.map((r) =>
+    '<div class="rel"><div class="relhead"><span class="v">v' + r.version + '</span>  ' +
+    r.title + '  <span class="d">' + r.date + '</span></div><ul>' +
+    r.notes.map((n) => '<li>' + n + '</li>').join('') + '</ul></div>'
+  ).join('');
+  $('btnNotes').onclick = () => {
+    const hidden = $('notes').classList.toggle('hidden');
+    $('btnNotes').textContent = hidden ? "WHAT'S NEW" : 'HIDE';
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RUN END

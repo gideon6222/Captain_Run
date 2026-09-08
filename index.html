@@ -9,7 +9,61 @@
 <title>Captain Run</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<!-- The error overlay handler must come BEFORE the entry script.
+
+     Vite hoists the bundled module into <head> at build time, so a handler
+     left down in <body> - where this used to be - is registered too late to
+     catch a boot error, and on a phone with no devtools that is the only way
+     to see a stack trace at all. After changing anything in here, verify by
+     deliberately breaking an import, building, and confirming the overlay
+     still shows the error. -->
+<script>
+  function showErr(m){
+    var e = document.getElementById('err');
+    if(!e) return;
+    e.classList.remove('hidden');
+    e.textContent += m + '\n\n';
+    var b = document.getElementById('boot');
+    if (b) b.classList.add('hidden');
+  }
+  window.addEventListener('error', function(e){
+    showErr('ERROR: ' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || ''));
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    showErr('PROMISE: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason));
+  });
+</script>
+
 <style>
+  /* Version, patch notes and build stamp, at the bottom of the camp.
+
+     The stamp is how a deploy is verified on the phone: an installed PWA can
+     be a load behind, and the game looks identical between builds, so there is
+     otherwise nothing to check. The version and notes answer the different
+     question of what actually changed. */
+  .verline{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,244,220,.14);
+    font-size:12.5px; font-weight:700; letter-spacing:.1em; color:var(--iron);
+  }
+  .notesbtn{
+    border:1px solid rgba(143,211,255,.4); background:rgba(143,211,255,.1); color:var(--iron);
+    border-radius:9px; padding:7px 11px; font-size:10.5px; font-weight:700; letter-spacing:.09em;
+  }
+  .notes{max-height:210px; overflow-y:auto; margin-top:10px;}
+  .notes.hidden{display:none;}
+  .rel{padding:9px 0; border-top:1px solid rgba(255,244,220,.12);}
+  .rel:first-child{border-top:none;}
+  .relhead{font-size:11.5px; font-weight:700; letter-spacing:.06em; color:var(--ink);}
+  .relhead .v{color:var(--gold);}
+  .relhead .d{color:var(--dim); font-weight:500;}
+  .rel ul{margin:5px 0 0; padding-left:15px; color:var(--dim); font-size:11px; line-height:1.6;}
+  .stamp{
+    margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,244,220,.12);
+    font:10.5px/1.5 ui-monospace,"Cascadia Mono",Consolas,monospace;
+    color:var(--dim); letter-spacing:.02em; text-align:center;
+  }
+
   :root{
     --ink:#fff4dc; --dim:#a08a6e; --gold:#ffc93c; --iron:#8fd3ff; --rune:#c17bff;
     --red:#ff4d5e; --green:#5ce07a;
@@ -151,22 +205,6 @@
 </head>
 <body>
 
-<script>
-  function showErr(m){
-    var e = document.getElementById('err');
-    if(!e) return;
-    e.classList.remove('hidden');
-    e.textContent += m + '\n\n';
-    var b = document.getElementById('boot');
-    if (b) b.classList.add('hidden');
-  }
-  window.addEventListener('error', function(e){
-    showErr('ERROR: ' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || ''));
-  });
-  window.addEventListener('unhandledrejection', function(e){
-    showErr('PROMISE: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason));
-  });
-</script>
 
 <div id="game"></div>
 
@@ -213,6 +251,12 @@
     </div>
     <div id="shop"></div>
     <button class="go out" id="btnGo">SET OUT</button>
+    <div class="verline">
+      <span id="verNum">v0.0.0</span>
+      <button id="btnNotes" class="notesbtn">WHAT&apos;S NEW</button>
+    </div>
+    <div id="notes" class="notes hidden"></div>
+    <div class="stamp" id="build"></div>
   </div>
 </div>
 
@@ -221,10 +265,7 @@
 <div id="boot" class="out">CAPTAIN RUN</div>
 <div id="err" class="hidden"></div>
 
-<script type="importmap">
-{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.166.0/build/three.module.js"}}
-</script>
-<script type="module" src="app.js"></script>
+<script type="module" src="/src/main.js"></script>
 
 <script>
   if ('serviceWorker' in navigator) {
