@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test test/tuning.test.mjs test/spawn.test.mjs",
+    "test": "node --test test/util.test.mjs test/tuning.test.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json",
     "e2e": "playwright test",
     "size": "node scripts/check-bundle-size.mjs",
     "size:update": "node scripts/check-bundle-size.mjs --update"
@@ -17,7 +18,10 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "@types/node": "^26.5.0",
+    "@types/three": "^0.166.0",
     "esbuild": "^0.25.0",
+    "typescript": "^7.0.2",
     "vite": "^5.4.0",
     "vite-plugin-pwa": "^1.3.0"
   }

@@ -148,8 +148,8 @@ test('the simulation is unchanged after forty seconds', async ({ page }) => {
     crew: s.crew, gold: s.gold, iron: s.iron, tier: s.tier, dps: s.dps,
     enemies: s.enemies, crates: s.crates, gates: s.gates, boss: s.boss, over: s.over
   }).toEqual({
-    crew: 12, gold: 1560, iron: 38, tier: 3, dps: 1192,
-    enemies: 13, crates: 7, gates: 1, boss: null, over: false
+    crew: 12, gold: 731, iron: 36, tier: 3, dps: 1192,
+    enemies: 18, crates: 5, gates: 1, boss: null, over: false
   });
 
   expect(s.z, 'the warband should be about 426 units up the mountain')
@@ -157,12 +157,100 @@ test('the simulation is unchanged after forty seconds', async ({ page }) => {
   expect(s.z).toBeLessThan(428);
 });
 
-test('a full ascent kills the boss and opens the camp', async ({ page }) => {
+/* The first ascent must be winnable with no upgrades and no steering.
+
+   `MOUNTAIN CAMP` is the victory screen and `CARRIED HOME` is the death
+   screen, so this distinguishes finishing from dying - which the earlier
+   version of this test did not, since both contain "CAMP" and both open the
+   same panel. It caught the balance cliff that restoring brutes opened up:
+   the run reached chunk 29 and died there every time, and the test still
+   passed because a corpse is carried to a camp too. */
+test('a fresh first ascent is won, not merely survived', async ({ page }) => {
   await bootFresh(page, 75);
   await expect(page.locator('#camp'),
     'seventy-five simulated seconds should finish an ascent').not.toHaveClass(/hidden/);
-  await expect(page.locator('#campTitle')).toContainText('CAMP');
+  await expect(page.locator('#campTitle'),
+    'the warband died on the first ascent with no upgrades - the difficulty ' +
+    'curve starts above the player').toHaveText('MOUNTAIN CAMP');
   await expect(page.locator('#err')).toHaveClass(/hidden/);
+});
+
+/* Regression on the whole class of bug the hash fix uncovered: a mechanic that
+   is written, tuned and shipped but whose spawn condition can never be true.
+   It fails as absence, so nothing errors and playtesting reads it as balance.
+
+   These assert the mechanics appear in an actual run, not that the odds are
+   right - the odds are checked against the source in test/util.test.mjs. */
+test('brutes and punishing gates actually occur in a run', async ({ page }) => {
+  await bootFresh(page);
+  /* Sampled every half second across four ascents rather than once at the end.
+     Draugr are short-lived - a single snapshot of a run that has already been
+     won sees an empty road and proves nothing. */
+  const seen = await page.evaluate(() => {
+    const CR = (window as any).__CR;
+    const ids = new Set<any>();
+    let brutes = 0, enemies = 0, punish = 0, gates = 0;
+    for (let a = 1; a <= 4; a++) {
+      CR.S.ascent = a;
+      CR.freeze();
+      for (let i = 0; i < 130; i++) {
+        CR.advance(0.5);
+        for (const e of CR.enemies()) {
+          if (e.boss || ids.has(e)) continue;
+          ids.add(e);
+          enemies++;
+          if (e.brute) brutes++;
+        }
+        for (const g of CR.gates()) {
+          if (ids.has(g)) continue;
+          ids.add(g);
+          gates++;
+          /* a punishing gate is the only kind with a losing option */
+          if (!g.left.good || !g.right.good) punish++;
+        }
+      }
+    }
+    return { brutes, enemies, punish, gates };
+  });
+
+  expect(seen.enemies, 'no draugr spawned in four ascents').toBeGreaterThan(50);
+  expect(seen.brutes,
+    'no brute spawned in four ascents - their spawn roll can never fire')
+    .toBeGreaterThan(0);
+  expect(seen.gates, 'no gates appeared').toBeGreaterThan(4);
+  expect(seen.punish,
+    'every gate offered two good options, so no gate is a decision - the ' +
+    'punishing roll can never fire').toBeGreaterThan(0);
+});
+
+test('the good gate is not always on the same side', async ({ page }) => {
+  await bootFresh(page);
+  /* Read off the gates a run actually meets rather than sampling the hash, so
+     this covers the swap as it is applied. If every good option lands on one
+     side the player never has to read a gate, which was true for the whole of
+     the game's life. */
+  const sides = await page.evaluate(() => {
+    const CR = (window as any).__CR;
+    const seen = new Set<any>();
+    const out: string[] = [];
+    for (let a = 1; a <= 4; a++) {
+      CR.S.ascent = a;
+      CR.freeze();
+      for (let i = 0; i < 130; i++) {
+        CR.advance(0.5);
+        for (const g of CR.gates()) {
+          if (seen.has(g)) continue;
+          seen.add(g);
+          out.push(g.left.good ? 'L' : 'R');
+        }
+      }
+    }
+    return out;
+  });
+  expect(sides.length, 'no gates were seen at all').toBeGreaterThan(4);
+  expect(new Set(sides).size,
+    'the good option was on the same side of every gate in four ascents')
+    .toBe(2);
 });
 
 test('the build stamp and version are populated', async ({ page }) => {

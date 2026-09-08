@@ -8,9 +8,20 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 export const CHANGELOG = [
+  {
+    version: '0.3.0', date: '2026-09-07', title: 'The mountain wakes up',
+    notes: [
+      'Brutes are real. Big purple draugr that take two of your crew - they were written into the game from the start and had never once spawned.',
+      'Gates can hurt now. Some offer a genuine loss against a doubling, and the good side is no longer always the same side.',
+      'Draugr, crates and shrines use the whole road instead of hugging the left.',
+      'The warband fights the Jotunn instead of the stragglers in front of it.',
+      'Axes fan out across the nearest few draugr rather than five into one.',
+      'Trees and boulders along the trail, roughly twice as many as before.'
+    ]
+  },
   {
     version: '0.2.0', date: '2026-09-07', title: 'Built to be continued',
     notes: [

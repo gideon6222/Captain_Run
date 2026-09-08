@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+
+    "strict": true,
+    "noImplicitAny": true,
+
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* main.js is still JavaScript and is being emptied module by module rather
+       than converted in one pass - a big-bang rewrite of 1,500 lines of live
+       game code has no way to prove it changed nothing. allowJs lets the TS
+       modules resolve alongside it; checkJs stays off so the untouched JS does
+       not produce hundreds of errors that nobody is going to read. Every
+       module extracted from it lands as .ts and is checked from that moment. */
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["src"]
+}

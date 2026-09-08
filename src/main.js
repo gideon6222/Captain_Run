@@ -1,127 +1,38 @@
 // Captain Run — a viking crowd-runner.
-// Five files, no build step. See NOTES.md in the repo for design decisions.
+// See NOTES.md for design decisions and CLAUDE.md for the shape of the repo.
 
 import * as THREE from 'three';
 import { VERSION, CHANGELOG } from './changelog.js';
+/* Extensionless because these are TypeScript. Vite resolves `./util` to
+   util.ts; it will not resolve `./util.js` from inside a .js file, since that
+   rewrite only happens for TS importers. main.js is the last JS module left
+   and each extraction shrinks it - when it goes, these become `.js` like the
+   TS files' own imports. */
+import { clamp, lerp, smooth, hash, fmt } from './util';
+import { T, TIERS, PALETTES } from './tuning';
+import * as TU from './tuning';
+import { load, save as writeSave } from './save';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TUNING — every number that shapes how it feels lives here.
+// SAVE + DERIVED STATS
+//
+// The numbers themselves live in tuning.ts and the save format in save.ts, both
+// pure and both unit-tested. What is left here is the binding: one live save
+// object, and thin wrappers that hand it to those pure functions so the call
+// sites below can stay short.
 // ─────────────────────────────────────────────────────────────────────────────
-const T = {
-  roadW: 6.2,
-  laneClamp: 1.5,
-  baseSpeed: 11.0,
-  steerSpeed: 9.5,
-  chunk: 12,
-  ascentChunks: 44,
+const S = load();
+const save = () => writeSave(S);
 
-  startCrew: 3,
-  maxCrewBase: 12,
-  crewSpacing: 0.47,
-  visCrew: 26,
-
-  atkInterval: 0.42,
-  atkRange: 22,
-  baseDmg: 4.2,
-  tierMul: 2.15,
-  whetMul: 0.08,
-
-  // everything hostile scales by this to the ascent power
-  ascentScale: 2.02,
-  gruntHP: 26,
-  bruteHP: 88,
-  bossHP: 9000,
-  gruntGold: 7,
-  bruteGold: 18,
-  crateIron: 4,
-  shrineRune: 1,
-
-  forgeBase: 14,        // iron for the first in-run forge tier
-  forgeGrowth: 1.55,
-
-  magnetBase: 3.4,
-  deathKeep: 0.6,
-};
-
-const TIERS = [
-  { n: 'RUSTED AXE',  c: 0x9a7a5a },
-  { n: 'IRON AXE',    c: 0xc9d6e0 },
-  { n: 'EMBER AXE',   c: 0xff8b3d },
-  { n: 'RUNED AXE',   c: 0x8be0ff },
-  { n: 'FROST AXE',   c: 0xd8f4ff },
-  { n: 'STORM AXE',   c: 0xffe14a },
-  { n: 'BLOODFANG',   c: 0xff3d5a },
-  { n: 'RAGNAROK',    c: 0xb96bff },
-  { n: 'GOD-CLEAVER', c: 0xffffff },
-];
-
-const PALETTES = [
-  { name: 'PINEWOOD',  sky: ['#8fd4ef', '#dff2ff'], fog: 0xcfe9f6, ground: 0x3d7a3c, road: 0x9a8763, kerb: 0x6d5b3e, tree: 0x2f6f37, tree2: 0x4a3020, rock: 0x8b96a0, mount: 0x6f8fa8, dust: 0xffffff },
-  { name: 'HVITFELL',  sky: ['#9dc4dd', '#f2fbff'], fog: 0xeaf5fb, ground: 0xe2edf4, road: 0xc6d2da, kerb: 0x93a3ae, tree: 0x27543a, tree2: 0x3a2718, rock: 0xa8b5be, mount: 0x9fb6c6, dust: 0xffffff },
-  { name: 'EMBERWAY',  sky: ['#4a1424', '#d4562a'], fog: 0x8a3320, ground: 0x4d2119, road: 0x6f4436, kerb: 0x4a2d22, tree: 0x7a2a18, tree2: 0x3a1a10, rock: 0x4a2d2a, mount: 0x7a3524, dust: 0xff9d4a },
-  { name: 'THE VOID',  sky: ['#140a26', '#4a2a86'], fog: 0x2a1650, ground: 0x261645, road: 0x4c3277, kerb: 0x33205a, tree: 0x6a34b0, tree2: 0x2a1a48, rock: 0x33224f, mount: 0x3d2470, dust: 0xc79bff },
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SAVE
-// ─────────────────────────────────────────────────────────────────────────────
-const KEY = 'captainrun.v1';
-const DEF_SAVE = {
-  v: 1, ascent: 1, gold: 0, runes: 0, best: 1, seenCamp: false,
-  up: { weapon: 0, whet: 0, warband: 0, mead: 0, boots: 0, lode: 0, thor: 0, freyja: 0, odin: 0 },
-};
-let S = load();
-
-function load() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return structuredClone(DEF_SAVE);
-    const d = JSON.parse(raw);
-    const s = structuredClone(DEF_SAVE);
-    if (d && typeof d === 'object') {
-      for (const k of ['ascent', 'gold', 'runes', 'best']) if (typeof d[k] === 'number') s[k] = d[k];
-      s.seenCamp = !!d.seenCamp;
-      if (d.up) for (const k in s.up) if (typeof d.up[k] === 'number') s.up[k] = d.up[k];
-    }
-    return s;
-  } catch (e) { return structuredClone(DEF_SAVE); }
-}
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SMALL HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
-const lerp = (a, b, t) => a + (b - a) * t;
-// frame-rate independent smoothing (see gamedev-notes CRAFT.md)
-const smooth = (rate, dt) => 1 - Math.exp(-rate * dt);
-
-function hash(a, b) {
-  let h = (a | 0) * 374761393 + (b | 0) * 668265263;
-  h = (h ^ (h >> 13)) * 1274126177;
-  return ((h ^ (h >> 16)) >>> 0) / 4294967296;
-}
-function fmt(n) {
-  n = Math.floor(n);
-  if (n < 1000) return '' + n;
-  if (n < 1e6) return (n / 1e3).toFixed(n < 1e4 ? 1 : 0) + 'K';
-  if (n < 1e9) return (n / 1e6).toFixed(n < 1e7 ? 1 : 0) + 'M';
-  return (n / 1e9).toFixed(1) + 'B';
-}
-
-// derived stats
-const scaleFor = (a) => Math.pow(T.ascentScale, a - 1);
-function weaponTier() { return clamp(S.up.weapon + run.forgeTier + (S.up.odin > 0 ? S.up.odin : 0), 0, TIERS.length - 1); }
-function dmgPerHit() {
-  const tier = weaponTier();
-  return T.baseDmg * Math.pow(T.tierMul, tier) * (1 + S.up.whet * T.whetMul) * (1 + S.up.thor * 0.10);
-}
-function squadDPS() { return run.crew * dmgPerHit() / T.atkInterval; }
-function maxCrew() { return T.maxCrewBase + S.up.mead * 2; }
-function startCrew() { return T.startCrew + S.up.warband; }
-function runSpeed() { return T.baseSpeed * (1 + S.up.boots * 0.06); }
-function magnetR() { return T.magnetBase * (1 + S.up.lode * 0.25); }
-function goldMul() { return 1 + S.up.freyja * 0.12; }
+const scaleFor    = (a) => TU.scaleFor(a);
+const weaponTier  = () => TU.weaponTier(S.up, run.forgeTier);
+const dmgPerHit   = () => TU.dmgPerHit(S.up, run.forgeTier);
+const squadDPS    = () => TU.squadDPS(S.up, run.forgeTier, run.crew);
+const maxCrew     = () => TU.maxCrew(S.up);
+const startCrew   = () => TU.startCrew(S.up);
+const runSpeed    = () => TU.runSpeed(S.up);
+const magnetR     = () => TU.magnetR(S.up);
+const goldMul     = () => TU.goldMul(S.up);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDERER / SCENE
@@ -456,7 +367,7 @@ function spawnChunk(c) {
   if (c >= 6 && r < density) {
     const n = 1 + Math.floor(r2 * (c > 24 ? 5 : 3));
     for (let i = 0; i < n; i++) {
-      const brute = c > 12 && hash(c, 1000 + i) > 0.72;
+      const brute = c > 12 && hash(c, 1000 + i) > 1 - T.bruteChance;
       enemies.push(makeEnemy(
         (hash(c, 300 + i) - 0.5) * (T.roadW - 1.4),
         z + 2 + i * 2.6 + hash(c, 500 + i) * 3,
@@ -510,7 +421,7 @@ function armBoss() {
 
 function spawnGate(z) {
   const r = hash(z | 0, 55 + S.ascent);
-  const punish = r > 0.68;
+  const punish = r > 1 - T.punishGateChance;
   const add = 3 + Math.floor(hash(z | 0, 66) * 6);
   let a, b;
   if (punish) {
@@ -994,6 +905,24 @@ function updateCrew(dt) {
 }
 
 function nearestEnemy(fromZ) {
+  /* The armed Jotunn takes priority over everything else in range.
+
+     Nearest-first looks obviously right and is wrong here. Eighteen draugr are
+     typically still on the road when the boss spawns, and the boss sits behind
+     all of them, so every axe went into trash while the horn sounded, the
+     health bar sat at full, and the boss slammed on its own clock every 3.4
+     seconds. Worse, it is self-reinforcing: damage is proportional to warband
+     size, so each slam cuts the damage that would end the fight, and the fight
+     lengthens until the run dies with the boss above half.
+
+     The player is told to fight the Jotunn, so the warband fights the Jotunn.
+     The trash still reaches them and still costs crew - that is the intended
+     pressure of the boss arriving with an escort - but the fight is legible
+     and it converges. */
+  if (boss && boss.armed && !boss.dead) {
+    const d = boss.z - fromZ;
+    if (d >= -1.5 && d <= T.atkRange) return boss;
+  }
   let best = null, bd = 1e9;
   for (const e of enemies) {
     if (e.dead) continue;
@@ -1002,6 +931,35 @@ function nearestEnemy(fromZ) {
     if (d < bd) { bd = d; best = e; }
   }
   return best;
+}
+
+/* The `want` closest draugr in range, nearest first.
+
+   Kill rate, not damage, is what the warband runs out of. One volley of five
+   axes every 0.42s all landing on the same draugr is 2.4 kills a second no
+   matter how much damage each one carries, and a late chunk can put five on
+   the road at once - so the crowd is overrun by arithmetic while every axe
+   overkills a corpse. Spreading the same total damage across the five nearest
+   raises the ceiling to twelve kills a second and costs nothing, because the
+   damage was being wasted anyway.
+
+   Insertion sort into a fixed array: `want` is five, and allocating and
+   sorting a list of every enemy in range twice a second is more work than the
+   whole thing is worth. */
+const nearBuf = [];
+function nearestEnemies(fromZ, want) {
+  nearBuf.length = 0;
+  for (const e of enemies) {
+    if (e.dead) continue;
+    const d = e.z - fromZ;
+    if (d < -1.5 || d > T.atkRange) continue;
+    let i = nearBuf.length;
+    while (i > 0 && nearBuf[i - 1].z - fromZ > d) i--;
+    if (i >= want) continue;
+    nearBuf.splice(i, 0, e);
+    if (nearBuf.length > want) nearBuf.length = want;
+  }
+  return nearBuf;
 }
 
 let axeCursor = 0;
@@ -1014,13 +972,17 @@ function updateCombat(dt) {
   const volley = Math.min(run.crew, 5);
   const dmgEach = (run.crew * dmgPerHit()) / volley;
   const n = Math.min(run.crew, T.visCrew);
+  /* Focus everything on the Jotunn; otherwise fan the volley across the
+     nearest few. Fewer draugr than axes and the extras double up, so a single
+     straggler - and a lone boss - still takes the warband's whole output. */
+  const spread = target === boss ? null : nearestEnemies(run.z, volley);
   for (let i = 0; i < volley; i++) {
     const u = crewUnits[Math.floor(Math.random() * n)];
     const a = axes[axeCursor];
     axeCursor = (axeCursor + 1) % axes.length;
     a.live = true;
     a.x = run.x + u.x; a.y = 1.1; a.z = run.z + u.z;
-    a.target = target;
+    a.target = spread && spread.length ? spread[i % spread.length] : target;
     a.t = 0; a.dur = 0.16 + Math.random() * 0.05;
     a.dmg = dmgEach;
     a.rot = 0;
@@ -1270,10 +1232,10 @@ function buildScenery() {
       const sgn = side ? 1 : -1;
       for (let k = 0; k < 3; k++) {
         const h = hash(c * 7 + k, 31 + side * 13);
-        if (h < 0.42) continue;
+        if (h < 1 - T.sceneryChance) continue;
         const z = c * T.chunk + k * 4 + hash(c, k + side * 5) * 3.4;
         const x = sgn * (T.roadW / 2 + 1.1 + hash(c, k + 40 + side) * 7);
-        const tree = hash(c, k + 60 + side) > 0.42;
+        const tree = hash(c, k + 60 + side) > 1 - T.treeChance;
         scenery.push({ x, z, tree, s: 0.65 + hash(c, k + 70 + side) * 0.8, r: hash(c, k + 80 + side) * 6.28 });
       }
     }
@@ -1644,6 +1606,11 @@ function boot() {
         tier: weaponTier(), dps: Math.floor(squadDPS()), enemies: enemies.length, crates: crates.length,
         gates: gates.length, boss: boss ? Math.round(boss.hp) : null, over: run.over, calls: renderer.info.render.calls }),
       steer: (x) => { run.targetX = x; },
+      /* Live entity lists and the tuning table. Every balance number in this
+         game was found by editing T here, replaying an ascent through
+         advance(), and reading the curve back - not by playing it forty
+         times. Keep them exposed. */
+      T, enemies: () => enemies, gates: () => gates, boss: () => boss,
       three: THREE, scene, renderer, L, E, W, OUTLINE_MAT,
     };
   }
