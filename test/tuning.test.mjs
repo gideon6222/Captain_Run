@@ -119,9 +119,19 @@ test('the runway always separates from the sky it floats in', () => {
   }
 });
 
+test('no workshop offers the core colour at a pool', () => {
+  /* A candle's core is wax 0, and a dip refuses a colour the candle already
+     wears - so a wax-0 pool is a station a third of the tray drives through
+     and gets nothing from. It reads on screen only as a tray that stubbornly
+     stays beige, which is the hardest kind of dead mechanic to notice. */
+  for (const w of WORKSHOPS) {
+    assert.ok(!w.waxes.includes(0), `${w.name} offers the core colour as a pool`);
+  }
+});
+
 test('every workshop offers waxes that exist and stays bright', () => {
   for (const w of WORKSHOPS) {
-    assert.ok(w.waxes.length >= 3, `${w.name} needs three waxes to make a vat a choice`);
+    assert.ok(w.waxes.length >= 3, `${w.name} needs three waxes to make a pool pair a choice`);
     for (const i of w.waxes) assert.ok(WAXES[i], `${w.name} offers a wax that does not exist`);
     assert.equal(w.sky.length, 2, `${w.name} needs a two-stop sky`);
     for (const s of w.sky) assert.match(s, /^#[0-9a-f]{6}$/i, `${w.name} sky must be a hex colour`);

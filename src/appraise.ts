@@ -1,50 +1,40 @@
 /* The gift table: what the tray is worth when it reaches the end of the runway.
 
-   Two axes, multiplied. How many candles survived, and what each one is worth
-   after everything the stations did to it. That is the whole economy, and
-   keeping it as a product rather than a sum is what stops either half becoming
-   the only thing worth thinking about: doubling the stack always doubles the
-   payout, and a well-made candle is always worth about twice a plain one, at
-   every size of stack.
+   Every candle is priced individually and the results add up, which is the
+   whole point of per-candle recipes: a tray where the player wove through both
+   pools is worth far more than one that held a straight line through a single
+   pool, even though both crossed the same stations. Under the old shared-recipe
+   model those two runs were identical.
 
-   Pure, so `npm test` can assert the shape of the economy: that variety beats
-   bulk at equal cost, that wrapping is worth reaching, and that a wiped stack
-   still pays something. */
+   Pure, so `npm test` can assert the shape of the economy: that weaving beats
+   holding a line, that a bigger tray pays proportionally, and that a wiped
+   tray still pays something. */
 
-import { T, MOULDS, WRAPS } from './tuning.js';
-import { colourCount, contrastPairs, waxValue, type Recipe } from './candle.js';
+import { T, WAXES } from './tuning.js';
+import { statsOf, trayValue, type Tray, type TrayStats } from './tray.js';
 
 export interface AppraisalInput {
-  count: number;      // candles that survived
   cash: number;       // banknotes picked up on the way
   earnMul: number;    // earning power
-  priceMul: number;   // what this workshop pays
+  priceMul: number;   // what this level pays
 }
 
 export interface Appraisal {
   count: number;
-  each: number;       // value of one finished candle
-  layerMul: number;   // reported apart so the results screen can name each one
-  contrastMul: number;
-  glitterMul: number;
-  mouldMul: number;
-  wrapMul: number;
-  craft: number;      // the product of all of them
-  candles: number;    // count * each
+  candles: number;    // coins from the candles themselves
   cash: number;
   value: number;      // total paid, floored
   stars: number;      // 0..3
-  colours: number;
-  pairs: number;
+  each: number;       // average per candle
+  stats: TrayStats;
 }
 
 /* Three stars is meant to be a real standard, not a participation award.
 
-   The gaps between the thresholds have to match the real spread between bad
-   and good play, and that spread is measured rather than assumed: at level 1
-   a run that never touches the screen and a run that plays well are about 3.5x
-   apart, so thresholds bunched inside a 1.5x band would hand three stars to
-   everybody - which is exactly what the first set did. */
+   The gaps between thresholds have to match the real spread between bad and
+   good play, and that spread is measured rather than assumed: thresholds
+   bunched inside a 1.5x band handed three stars to everybody, including the
+   run that never touched the screen. */
 export const STAR_AT = [0.30, 0.60, 1.15];
 
 export function starsFor(value: number, expected: number): number {
@@ -54,31 +44,19 @@ export function starsFor(value: number, expected: number): number {
   return s;
 }
 
-export function appraise(r: Recipe, o: AppraisalInput): Appraisal {
-  /* Material first, and it is never zero: even a single bare candle sells, so
-     a run that went badly still pays toward the next attempt. This game has no
-     other income and an income that can round to nothing can strand a player. */
-  const material = waxValue(r) * T.perCandleBase;
-
-  const layerMul = 1 + Math.max(0, colourCount(r) - 1) * T.layerValue;
-  const pairs = contrastPairs(r);
-  const contrastMul = 1 + pairs * T.contrastValue;
-  const glitterMul = 1 + r.glitter * T.glitterValue;
-  const mouldMul = MOULDS[r.mould].mul;
-  const wrapMul = WRAPS[r.wrap].mul;
-  const craft = layerMul * contrastMul * glitterMul * mouldMul * wrapMul;
-
-  const each = material * craft * o.priceMul;
-  const count = Math.max(0, Math.floor(o.count));
-  const candles = each * count;
+export function appraise(t: Tray, o: AppraisalInput): Appraisal {
+  const candles = trayValue(t) * o.priceMul;
   const value = Math.floor((candles + o.cash) * o.earnMul);
-
   return {
-    count, each, layerMul, contrastMul, glitterMul, mouldMul, wrapMul, craft,
-    candles, cash: o.cash,
+    count: t.length,
+    candles,
+    cash: o.cash,
+    /* Never zero: even a single bare candle sells, so a run that went badly
+       still pays toward the next attempt. There is no other income in the
+       game and an income that can round to nothing can strand a player. */
     value: Math.max(1, value),
     stars: starsFor(value, T.par * o.priceMul),
-    colours: colourCount(r),
-    pairs,
+    each: t.length ? (candles / t.length) : 0,
+    stats: statsOf(t, WAXES.length),
   };
 }

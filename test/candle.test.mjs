@@ -12,7 +12,7 @@ const CREAM = 0, AQUA = 1, GUM = 2, SUN = 3, MINT = 4, LILAC = 5;
    Anything asserted here would be a silent, ugly bug on screen if it stopped
    holding. */
 
-test('a fresh tray is one cream band, unpressed and unwrapped', () => {
+test('a fresh candle is one cream band, unpressed and unwrapped', () => {
   const r = P.newRecipe();
   assert.deepEqual(r.layers, [CREAM]);
   assert.equal(r.glitter, 0);
@@ -22,37 +22,39 @@ test('a fresh tray is one cream band, unpressed and unwrapped', () => {
 
 test('dipping a new colour bands it; the same colour twice does nothing', () => {
   const r = P.newRecipe();
-  P.dip(r, AQUA);
+  assert.equal(P.dip(r, AQUA), true, 'a dip that changed something says so');
   assert.deepEqual(r.layers, [CREAM, AQUA]);
-  P.dip(r, AQUA);
-  assert.deepEqual(r.layers, [CREAM, AQUA], 'aqua on aqua is not a second aqua band');
+  assert.equal(P.dip(r, AQUA), false,
+    'a candle crossing one pool lengthwise must not come out with six identical bands');
+  assert.deepEqual(r.layers, [CREAM, AQUA]);
   P.dip(r, GUM);
   assert.equal(r.layers.length, 3);
-  assert.equal(P.outerWax(r), GUM);
+  assert.equal(P.topWax(r), GUM);
 });
 
-test('a full mould recolours the outside rather than dropping the dip', () => {
+test('a full mould recolours the top rather than dropping the dip', () => {
   const r = P.newRecipe();
   const cols = [AQUA, GUM, SUN, MINT, LILAC, AQUA, GUM, SUN, MINT, LILAC];
   for (const c of cols) P.dip(r, c);
   assert.equal(r.layers.length, T.maxLayers, 'the band count is capped');
-  assert.equal(P.outerWax(r), LILAC,
-    'and the outside is the colour you were last dipped in, or the picture lies');
+  assert.equal(P.topWax(r), LILAC,
+    'and the top is the colour it was last dipped in, or the picture lies');
 });
 
 test('glitter caps, and a press only ever improves the shape', () => {
   const r = P.newRecipe();
-  P.addGlitter(r, 99);
+  assert.equal(P.addGlitter(r, 99), true);
   assert.equal(r.glitter, T.maxGlitter);
+  assert.equal(P.addGlitter(r, 1), false, 'a maxed candle reports no change');
 
-  P.press(r, 3);
+  assert.equal(P.press(r, 3), true);
   assert.equal(r.mould, 3);
-  P.press(r, 1);
-  assert.equal(r.mould, 3, 'a weaker press must not downgrade the tray');
+  assert.equal(P.press(r, 1), false, 'a weaker press must not downgrade a candle');
+  assert.equal(r.mould, 3);
 
   P.wrapIn(r, 2);
-  P.wrapIn(r, 1);
-  assert.equal(r.wrap, 2, 'nor may a plainer wrapping');
+  assert.equal(P.wrapIn(r, 1), false, 'nor may a plainer wrapping');
+  assert.equal(r.wrap, 2);
 });
 
 // -- geometry -----------------------------------------------------------------
@@ -75,7 +77,7 @@ test('a candle is a layer cake: every band visible, newest on top', () => {
   assert.ok(Math.abs(ys[0] - h / 2) < 1e-9, 'the bottom band sits on the tray');
   assert.ok(Math.abs(ys[ys.length - 1] + h / 2 - P.candleHeight(r)) < 1e-9,
     'and the top band reaches the top - no gap, no overhang');
-  assert.equal(P.outerWax(r), GUM, 'the newest dip is the top band');
+  assert.equal(P.topWax(r), GUM, 'the newest dip is the top band');
 });
 
 test('dips make a candle taller, and barely wider', () => {

@@ -1,4 +1,4 @@
-﻿/* Every number that shapes how the game feels, and the arithmetic derived from
+/* Every number that shapes how the game feels, and the arithmetic derived from
    it. Pure: nothing here reads live state, so each function takes the upgrade
    table and whatever run-scoped value it needs as an argument.
 
@@ -26,7 +26,7 @@ export const T = {
      the front went a second ago. Growing the stack is therefore a genuine
      trade - more candles is more money and less agility - rather than a number
      that only ever goes up. */
-  startCandles: 6,
+  startCandles: 8,
   maxCandles: 27,        // what the renderer draws, so the HUD count never lies
   /* Three abreast, in rows that trail the leader.
 
@@ -89,11 +89,36 @@ export const T = {
      spread between never steering and steering well was 1.3x, which means the
      game was not really being played. These numbers are what make the tray
      something you have to protect rather than something that accumulates. */
-  barrierTake: 5,
-  rollerTake: 3,
-  sawTake: 6,
+  /* Rebalanced when growth changed shape.
+
+     At 5/3/6 these were tuned against x2 gates, which could double a tray in
+     one beat. Growth is now loose candles worth one each, so the same numbers
+     meant a single barrier took five of the six you start with and the early
+     runway was unrecoverable. Flat rather than proportional on purpose: the
+     player has to be able to look at a barrier and know what it costs. */
+  barrierTake: 3,
+  rollerTake: 2,
+  sawTake: 4,
 
   cashPickup: 120,       // face value of a banknote on the runway, before scale
+
+  /* Stations are POOLS ON THE GROUND, in pairs across the runway.
+
+     The reference's strategy guide is explicit: "if there are two pools of wax
+     side by side, you should swipe left and right quickly to try and dunk all
+     of your candles in both of the pools". A pool has to be long enough to
+     weave across and narrow enough that holding one line misses the other, or
+     there is nothing to weave. `poolLen` is measured against the tray: a full
+     tray is nine rows deep at `trailGap` apart, so a pool shorter than that
+     cannot get the whole tray in even standing still. */
+  poolLen: 11.0,
+  poolInset: 0.15,       // gap between the two pools, so the split reads
+
+  /* Loose candles lying on the runway - the growth mechanic, straight off the
+     reference screenshot, where finished candles lie scattered on the track.
+     There are no +N / x2 gates in the reference; those were carried over from
+     the viking game this repo used to hold and they are gone. */
+  looseWorth: 1,
   magnetBase: 2.0,
 
   /* How often each seeded roll comes up. Named and gathered here rather than
@@ -103,19 +128,28 @@ export const T = {
   barrierChance: 0.42,
   rollerChance: 0.30,
   sawChance: 0.22,
-  cashChance: 0.58,
-  gateChance: 0.72,
+  cashChance: 0.50,
+  looseChance: 0.80,
   guardedCash: 0.55,     // how often an obstacle is planted on the cash line
 
   /* Stars are cut against par scaled by what the level pays, so three stars
      means the same standard of work at the first workshop and the ninth.
 
-     Measured, not chosen. Four scripted runs of level 1 with no upgrades -
-     never steering, dodging only, dodging and sweeping banknotes, and dodging
-     while choosing station halves - and par is set so the best of them lands
-     just on three stars. Re-measure whenever obstacle damage, gate rates or
-     the craft multipliers move, because all three feed it. */
-  par: 9100,
+     Measured, not chosen. Four scripted runs of level 1 with no upgrades:
+     never steering scores 8,103; dodging obstacles only 6,011; gathering
+     pickups 8,474; and *weaving the pools* - sweeping left and right through
+     each pair so different candles land in each - 20,404. Those land on
+     1 / 1 / 2 / 3 stars.
+
+     The gap that matters is the last one: weaving is worth 2.6x per candle
+     over gathering ($884 against $342). Under the shared-tray model this
+     replaced, all four of those runs produced the same per-candle value.
+
+     The window is narrow - idling and gathering are only 4% apart, because the
+     magnet collects pickups almost by itself - so this number is fragile.
+     Re-measure whenever pool length, the magnet, obstacle damage or the craft
+     multipliers move. */
+  par: 13800,
 
   levelScale: 1.55,      // how much harder each workshop is
   priceScale: 1.70,      // and how much better it pays
@@ -218,11 +252,19 @@ export interface Workshop {
    backdrop from twenty units out, which is exactly the distance you steer by.
    Change the *lightness* between road and sky, not just the hue, or a themed
    level quietly becomes an unreadable one. */
+/* No workshop offers CREAM at a pool.
+
+   Cream is what a candle's core already is, and `dip` refuses a colour the
+   candle is already wearing - so a cream pool was a station a third of the
+   tray could drive through and get nothing from, which is the "a station must
+   always do something" rule broken in a way that only shows up on screen as a
+   tray that stubbornly stays beige. Cream stays in the ladder as the core and
+   as the thing saturated colours are read against. */
 export const WORKSHOPS: Workshop[] = [
   { name: 'THE WORKSHOP',  sky: ['#3aa8ee', '#bfeaff'], road: 0x5a27ab, rail: 0xf0e4ff, stripe: 0x7440c9,
-    prop: 0xff4d8d, cloud: 0xffffff, waxes: [0, 1, 2] },
+    prop: 0xff4d8d, cloud: 0xffffff, waxes: [1, 2, 3] },
   { name: 'SUGAR FACTORY', sky: ['#ffc98f', '#fff4e2'], road: 0xb01f68, rail: 0xffe6f2, stripe: 0xd13a83,
-    prop: 0x4fe3f0, cloud: 0xffffff, waxes: [0, 3, 1] },
+    prop: 0x4fe3f0, cloud: 0xffffff, waxes: [2, 3, 5] },
   { name: 'MINT ATELIER',  sky: ['#8fe8ff', '#f0fffb'], road: 0x156b62, rail: 0xdcfff6, stripe: 0x22897d,
     prop: 0xffd429, cloud: 0xffffff, waxes: [4, 1, 2] },
   { name: 'THE BOUTIQUE',  sky: ['#c9a4ff', '#f4ecff'], road: 0x35176e, rail: 0xe8dcff, stripe: 0x4a2496,

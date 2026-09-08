@@ -48,7 +48,8 @@ npm run size       # bundle size guard, fails in both directions
 | `index.html` | Shell: all CSS, HUD, workshop screen, results card, error overlay, SW registration |
 | `src/main.js` | The game: renderer, stations, spawning, simulation, shop, boot |
 | `src/stack.ts` | **The trailing tray.** Path history and the row layout that lags behind it |
-| `src/candle.ts` | The recipe — bands, glitter, mould, wrap — and the geometry derived from it |
+| `src/tray.ts` | The candles currently on the tray, one recipe each; growth, damage, stats |
+| `src/candle.ts` | ONE candle's recipe — bands, glitter, mould, wrap — and its geometry |
 | `src/appraise.ts` | What a tray is worth at the gift table, and the star rating |
 | `src/tuning.ts` | `T`, waxes, moulds, wraps, workshops, upgrades, derived stats |
 | `src/util.ts` | `clamp`, `lerp`, `smooth`, `hash`, `fmt`, `makeRng` |
@@ -56,19 +57,33 @@ npm run size       # bundle size guard, fails in both directions
 | `src/sfx.ts` | The whole audio graph, synthesised, built on first gesture |
 | `src/gfx.ts` | Toon materials, inverted-hull outlines, the instanced `Layer` |
 | `src/changelog.js` | `VERSION` and the patch notes shown in the workshop |
-| `e2e/smoke.spec.ts` | 24 tests against the built game, including the thirty-second golden |
+| `e2e/smoke.spec.ts` | 25 tests against the built game, including the thirty-second golden |
 | `NOTES.md` | Design decisions, tuning as shipped, and what to do next |
 
 ## The two axes
 
-Everything in the game is one of these, and they never interfere:
+Everything in the game is one of these:
 
-- **How many candles** — gates add (`+N` / `x2`), obstacles knock them off the back.
-- **What each one is worth** — the stations, which treat the whole tray at once.
+- **How many candles** — loose candles on the runway add one each, obstacles knock them off
+  the back of the tray.
+- **What each one is worth** — the pools, and **every candle carries its own recipe**.
 
-That separation is why both stay readable. Obstacles cannot quietly change quality and
-stations cannot quietly change count, so the HUD can show one number for each and the
-results screen can multiply them.
+## Per-candle recipes are the game
+
+The single most important fact in the repo, and it was wrong for two builds.
+
+Wax is a **pool on the ground**, not a gate. Which candles get which colour depends on where
+each one was as the tray snaked over it — and because the tray trails along the leader's
+recorded path, **the player's line is the decision.** The reference's own strategy guide says
+it outright: *"if there are two pools of wax side by side, you should swipe left and right
+quickly to try and dunk all of your candles in both of the pools."*
+
+Treating the tray as one shared recipe deletes that entire skill. Measured, it produced an
+**identical** per-candle value across four scripted play styles — never touching the screen
+scored the same quality as playing perfectly. With per-candle recipes, weaving is worth
+**2.6× per candle** over just driving through.
+
+`weaving the pools beats holding a line` in e2e is the standing guard on it.
 
 ## Invariants
 
@@ -113,18 +128,21 @@ results screen can multiply them.
 
 ## Numbers that are calibrated, not chosen
 
-- **`par: 9100` and `STAR_AT = [0.30, 0.60, 1.15]`** — measured, not picked. Four scripted
-  runs of level 1 with no upgrades: never steering scores 4,485; dodging 7,935; dodging plus
-  choosing station halves 8,880; dodging plus sweeping banknotes 10,575. Those land on
-  **1 / 2 / 2 / 3 stars**, so three stars needs both good dodging and the money.
-  **Re-measure whenever obstacle damage, gate rates or the craft multipliers move.**
-- **`barrierTake: 5, rollerTake: 3, sawTake: 6`.** At 3/2/4 a run that never touched the
-  screen finished with fourteen candles and three stars: gates hand out more growth over a
-  level than soft obstacles can claw back, and the whole spread between idling and playing
-  well was 1.3×.
-- **Stations are two halves, never full width.** Full-width gantries gave every tray every
-  treatment regardless of input — per-candle value came out *identical* across every play
-  style. The halves are the only place skill touches quality.
+- **`par: 13800` and `STAR_AT = [0.30, 0.60, 1.15]`** — measured, not picked. Four scripted
+  runs of level 1 with no upgrades: never steering 8,103; dodging only 6,011; gathering
+  pickups 8,474; **weaving the pools 20,404**. Those land on **1 / 1 / 2 / 3 stars**. The
+  window is narrow — idling and gathering are only 4% apart, because the magnet collects
+  pickups almost by itself — so this is fragile. **Re-measure whenever pool length, the
+  magnet, obstacle damage or the craft multipliers move.**
+- **`barrierTake: 3, rollerTake: 2, sawTake: 4`.** These were 5/3/6 when growth came from
+  `×2` gates. Growth is now loose candles worth one each, so the old numbers meant a single
+  barrier took five of the eight you start with.
+- **`poolLen: 11.0`.** A pool has to be longer than the tray is deep, or it cannot get the
+  whole tray in even standing still — and short enough that one line misses the other pool.
+- **No workshop offers wax 0 (CREAM) at a pool.** Cream is the candle's core and `dip`
+  refuses a colour a candle already wears, so a cream pool was a dead station that read on
+  screen only as a tray that stubbornly stayed beige. Removing it took average colours per
+  candle from 2.07 to 2.70.
 - **`bestMould`/`bestWrap` floor at 1.** At 0 the level-1 press stamped PLAIN onto plain
   candles and printed "ALREADY PLAIN" — a station with a gantry and a sign that did nothing
   until an upgrade several levels later.

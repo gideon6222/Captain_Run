@@ -8,9 +8,21 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '2.0.1';
+export const VERSION = '3.0.0';
 
 export const CHANGELOG = [
+  {
+    version: '3.0.0', date: '2026-09-07', title: 'Dip them yourself',
+    notes: [
+      'Wax is now a POOL on the runway, not a gate you pass through - and every candle keeps its own colours.',
+      'Sweep left and right through a pair of pools and different candles get dipped in each. Weaving is worth about 2.6x per candle over just driving through.',
+      'Two pools side by side at every gantry: CANDLE, GLITTER, MOLD and WRAP, each with its own sign.',
+      'The tray grows by collecting loose candles lying on the runway. The +N and x2 gates are gone.',
+      'Machines that actually work: a ladle pours into the wax pools and the press rams up and down.',
+      'The results screen reports the tray - colours per candle, how many got moulded, how many got wrapped, how many came out plain.',
+      'Barriers, rollers and saws take fewer candles, to match the slower growth.'
+    ]
+  },
   {
     version: '2.0.1', date: '2026-09-07', title: 'The workshop scrolls',
     notes: [
