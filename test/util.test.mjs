@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPure } from './harness.mjs';
 
-const { clamp, lerp, smooth, hash, fmt } = await loadPure();
+const { clamp, lerp, smooth, hash, fmt, makeRng } = await loadPure();
 
 test('clamp holds the ends', () => {
   assert.equal(clamp(5, 0, 10), 5);
@@ -108,6 +108,36 @@ test('the thresholds the game actually uses can all fire', () => {
   assert.ok(fires(0.5) > 60, 'gate sides never swap');
   assert.ok(fires(0.68) > 30, 'punishing gates never appear');
   assert.ok(fires(0.72) > 25, 'brutes never spawn');
+});
+
+/* The run stream. Anything whose value decides *when* something happens - loot
+   scatter velocity, axe flight time - draws from this rather than Math.random,
+   or the whole-game golden flakes about one run in ten. */
+test('a seeded stream replays exactly and two seeds do not', () => {
+  const a = makeRng(7), b = makeRng(7), c = makeRng(8);
+  const first = [], second = [], other = [];
+  for (let i = 0; i < 200; i++) { first.push(a()); second.push(b()); other.push(c()); }
+  assert.deepEqual(second, first, 'the same seed must replay the same stream');
+  assert.notDeepEqual(other, first, 'a different seed must give a different stream');
+});
+
+test('a seeded stream is uniform and does not repeat itself', () => {
+  const r = makeRng(3);
+  const seen = new Set();
+  const deciles = new Array(10).fill(0);
+  const n = 4000;
+  for (let i = 0; i < n; i++) {
+    const v = r();
+    assert.ok(v >= 0 && v < 1, `${v} out of range at draw ${i}`);
+    seen.add(v);
+    deciles[Math.floor(v * 10)]++;
+  }
+  /* A stream that cycles would silently make every burst identical. */
+  assert.ok(seen.size > n * 0.99, `only ${seen.size} distinct values in ${n} draws`);
+  for (let d = 0; d < 10; d++) {
+    const pct = (deciles[d] / n) * 100;
+    assert.ok(Math.abs(pct - 10) < 3, `decile ${d} holds ${pct.toFixed(1)}%`);
+  }
 });
 
 test('fmt keeps the readout narrow', () => {

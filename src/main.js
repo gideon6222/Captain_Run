@@ -8,10 +8,11 @@ import { VERSION, CHANGELOG } from './changelog.js';
    rewrite only happens for TS importers. main.js is the last JS module left
    and each extraction shrinks it - when it goes, these become `.js` like the
    TS files' own imports. */
-import { clamp, lerp, smooth, hash, fmt } from './util';
+import { clamp, lerp, smooth, hash, fmt, makeRng } from './util';
 import { T, TIERS, PALETTES } from './tuning';
 import * as TU from './tuning';
 import { load, save as writeSave } from './save';
+import { createSfx } from './sfx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SAVE + DERIVED STATS
@@ -306,7 +307,18 @@ const run = {
 
 let hintTimer = 0;
 
+/* Every random draw that can change the outcome of a run comes from here, not
+   Math.random - loot scatter and axe flight time, both of which decide *when*
+   something lands. Purely cosmetic jitter (crew colours, dust motes, camera
+   shake, the enemies' walk phase) is still Math.random and should stay that
+   way; seeding it would buy nothing and cost a stream that no longer lines up
+   between a run with particles and a run without.
+
+   Reseeded per ascent in startAscent, so an ascent replays exactly. */
+let rnd = makeRng(1);
+
 function startAscent() {
+  rnd = makeRng(1000 + S.ascent);
   run.active = true; run.over = false; run.bossPhase = false;
   run.z = 0; run.x = 0; run.targetX = 0;
   run.crew = clamp(startCrew(), 1, maxCrew());
@@ -446,13 +458,15 @@ function burst(x, y, z, n, kind, total) {
     const p = loot[lootCursor];
     lootCursor = (lootCursor + 1) % loot.length;
     p.live = true; p.x = x; p.y = y; p.z = z;
-    const a = Math.random() * 6.283, s = 1.6 + Math.random() * 3.4;
+    /* Seeded, not Math.random: velocity decides when a coin comes within
+       magnet reach, which decides when its gold lands. See makeRng. */
+    const a = rnd() * 6.283, s = 1.6 + rnd() * 3.4;
     p.vx = Math.cos(a) * s * 0.55; p.vz = Math.sin(a) * s * 0.55 - 1.5;
-    p.vy = 4.2 + Math.random() * 4.4;
-    p.rot = Math.random() * 6.28; p.spin = (Math.random() - 0.5) * 14;
+    p.vy = 4.2 + rnd() * 4.4;
+    p.rot = rnd() * 6.28; p.spin = (rnd() - 0.5) * 14;
     p.kind = kind; p.val = per; p.t = 0;
-    if (kind === 0) p.col.setHSL(0.11, 0.95, 0.52 + Math.random() * 0.12);
-    else if (kind === 1) p.col.setHSL(0.56, 0.75, 0.62 + Math.random() * 0.1);
+    if (kind === 0) p.col.setHSL(0.11, 0.95, 0.52 + rnd() * 0.12);
+    else if (kind === 1) p.col.setHSL(0.56, 0.75, 0.62 + rnd() * 0.1);
     else p.col.setHSL(0.76, 0.8, 0.62);
   }
 }
@@ -470,131 +484,10 @@ function shake(v) { run.shake = Math.min(1.2, run.shake + v); }
 function hitStop(ms) { run.hitStop = Math.max(run.hitStop, ms / 1000); }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUDIO — fully synthesised, no binaries reach this repo
+// AUDIO — see sfx.ts. Built on the first gesture; the theme drops an octave in
+// the boss phase, which is why it needs to read the run rather than be told.
 // ─────────────────────────────────────────────────────────────────────────────
-const sfx = (() => {
-  let ac = null, master = null, musicGain = null, noiseBuf = null, delay = null;
-  let step = 0, nextTime = 0, timer = null, lastPing = 0;
-  const THEME = [0, 3, 5, 7, 5, 3, 0, -2];   // D minor-ish, 8 slow notes
-
-  function init() {
-    if (ac) { if (ac.state === 'suspended') ac.resume().catch(() => {}); return; }
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    ac = new AC();
-    master = ac.createGain(); master.gain.value = 0.6;
-    const comp = ac.createDynamicsCompressor();
-    master.connect(comp); comp.connect(ac.destination);
-    musicGain = ac.createGain(); musicGain.gain.value = 0.34; musicGain.connect(master);
-    delay = ac.createDelay(1.0); delay.delayTime.value = 0.34;
-    const fb = ac.createGain(); fb.gain.value = 0.3;
-    delay.connect(fb); fb.connect(delay); delay.connect(musicGain);
-    const len = ac.sampleRate * 1.2;
-    noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
-    const d = noiseBuf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    // drone bed
-    for (const [f, det] of [[73.4, 0], [110, 4], [146.8, -5]]) {
-      const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det;
-      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
-      const g = ac.createGain(); g.gain.value = 0.055;
-      o.connect(lp); lp.connect(g); g.connect(musicGain); o.start();
-    }
-    if (ac.state === 'suspended') ac.resume().catch(() => {});
-    nextTime = ac.currentTime + 0.1;
-    timer = setInterval(sched, 120);
-  }
-  function tone(freq, dur, type, vol, atk, dest) {
-    if (!ac) return;
-    const o = ac.createOscillator(); o.type = type || 'sine'; o.frequency.value = freq;
-    const g = ac.createGain();
-    const t = ac.currentTime;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(vol, t + (atk || 0.005));
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(dest || master);
-    o.start(t); o.stop(t + dur + 0.02);
-    return o;
-  }
-  function noise(dur, freq, q, vol, type) {
-    if (!ac) return;
-    const s = ac.createBufferSource(); s.buffer = noiseBuf;
-    const f = ac.createBiquadFilter(); f.type = type || 'bandpass'; f.frequency.value = freq; f.Q.value = q || 1;
-    const g = ac.createGain();
-    const t = ac.currentTime;
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    s.connect(f); f.connect(g); g.connect(master);
-    s.start(t); s.stop(t + dur + 0.02);
-  }
-  function sched() {
-    if (!ac) return;
-    const beat = 60 / 116 / 2;   // eighth notes
-    while (nextTime < ac.currentTime + 0.3) {
-      const s = step % 16;
-      const t = nextTime;
-      // drum: tom heartbeat
-      if (s === 0 || s === 6 || s === 10) drum(t, s === 0 ? 62 : 88, 0.28);
-      if (s === 4 || s === 12) drum(t, 150, 0.14);
-      // horn theme, one note every 2 beats, only on the second half of the bar cycle
-      if (s % 4 === 0) {
-        const idx = (Math.floor(step / 4)) % 8;
-        const semi = THEME[idx] + (run.bossPhase ? -12 : 0);
-        const f = 146.83 * Math.pow(2, semi / 12);
-        horn(t, f);
-      }
-      nextTime += beat; step++;
-    }
-  }
-  function drum(t, f, vol) {
-    const o = ac.createOscillator(); o.type = 'sine';
-    o.frequency.setValueAtTime(f * 2.2, t);
-    o.frequency.exponentialRampToValueAtTime(f, t + 0.09);
-    const g = ac.createGain();
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
-    o.connect(g); g.connect(musicGain);
-    o.start(t); o.stop(t + 0.36);
-  }
-  function horn(t, f) {
-    const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
-    const o2 = ac.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = f * 1.005;
-    const lp = ac.createBiquadFilter(); lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(500, t);
-    lp.frequency.linearRampToValueAtTime(1100, t + 0.5);
-    const g = ac.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.075, t + 0.3);       // slow attack: never a beep
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
-    o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(musicGain); g.connect(delay);
-    o.start(t); o2.start(t); o.stop(t + 1.6); o2.stop(t + 1.6);
-  }
-  return {
-    init,
-    throwAxe() { noise(0.09, 2600 + Math.random() * 900, 2, 0.05, 'highpass'); },
-    hit() { tone(180 + Math.random() * 120, 0.09, 'square', 0.06); },
-    smash() { noise(0.24, 700 + Math.random() * 400, 1.2, 0.2, 'bandpass'); },
-    kill() { noise(0.34, 320, 0.9, 0.25); tone(90, 0.3, 'sawtooth', 0.1); },
-    ping() {
-      if (!ac) return;
-      const now = ac.currentTime;
-      if (now - lastPing < 0.055) return;
-      lastPing = now;
-      tone(880 * (0.85 + Math.random() * 0.5), 0.08, 'triangle', 0.045);
-    },
-    gate(good) {
-      if (good) { tone(523, 0.14, 'triangle', 0.11); setTimeout(() => tone(784, 0.2, 'triangle', 0.1), 80); }
-      else { tone(200, 0.3, 'sawtooth', 0.11); }
-    },
-    forge() {
-      noise(0.3, 900, 1, 0.22);
-      setTimeout(() => { tone(392, 0.5, 'triangle', 0.13, 0.01); tone(587, 0.5, 'triangle', 0.1, 0.01); }, 60);
-    },
-    hurt() { tone(160, 0.34, 'sawtooth', 0.14, 0.005); },
-    horn() { if (!ac) return; horn(ac.currentTime, 98); },
-    boom() { noise(0.7, 180, 0.7, 0.34, 'lowpass'); tone(60, 0.8, 'sine', 0.2); },
-  };
-})();
+const sfx = createSfx({ isBossPhase: () => run.bossPhase });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HUD
@@ -983,7 +876,8 @@ function updateCombat(dt) {
     a.live = true;
     a.x = run.x + u.x; a.y = 1.1; a.z = run.z + u.z;
     a.target = spread && spread.length ? spread[i % spread.length] : target;
-    a.t = 0; a.dur = 0.16 + Math.random() * 0.05;
+    /* Seeded: the flight time is when the damage lands. */
+    a.t = 0; a.dur = 0.16 + rnd() * 0.05;
     a.dmg = dmgEach;
     a.rot = 0;
     a.col.setHex(TIERS[weaponTier()].c);

@@ -41,6 +41,27 @@ export function hash(a: number, b: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
+/* A deterministic replacement for Math.random, for anything that touches game
+   state.
+
+   `hash` is for decisions keyed on a place - which chunk, which ascent - and
+   gives the same answer however many times it is asked. This is for the other
+   case: a stream of values where nothing meaningful indexes them, like the
+   scatter velocity of fourteen coins bursting out of a crate.
+
+   Those look purely decorative and are not. Loot is magneted up when it comes
+   within reach, so its velocity decides *when* it is collected, which decides
+   when gold arrives, which decides when the in-run forge crosses a tier. Left
+   on Math.random it made the forty-second golden flake roughly one run in ten
+   - passing alone, failing in a full suite - which is the worst possible
+   behaviour for the test everything else is built on.
+
+   Reset per run with the ascent as the seed, so an ascent replays exactly. */
+export function makeRng(seed: number): () => number {
+  let n = 0;
+  return () => hash(n++, seed | 0);
+}
+
 /* Compact numbers for the HUD. Thousands keep one decimal until they reach
    five figures, so the width of the readout stays roughly still while the
    number climbs. */

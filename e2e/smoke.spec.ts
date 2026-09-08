@@ -132,6 +132,28 @@ test('stays inside a sane draw-call budget', async ({ page }) => {
     .toBeLessThanOrEqual(90);
 });
 
+/* The property the golden below depends on, asserted directly.
+
+   Two runs of the same forty seconds in the same page must land on identical
+   numbers. That was not true until loot scatter and axe flight time were moved
+   off Math.random: both decide *when* something lands - when a coin comes
+   within magnet reach, when damage arrives - so they moved the result while
+   looking like decoration. It made the golden fail about one run in ten, and
+   pass every time it was run alone.
+
+   This test says which of the two is broken when they fail together: if this
+   one fails, the simulation is not deterministic and the golden's numbers are
+   not the golden's fault. */
+test('the same forty seconds replays identically', async ({ page }) => {
+  await bootFresh(page);
+  const [a, b] = await page.evaluate(() => {
+    const CR = (window as any).__CR;
+    const once = () => { CR.freeze(); CR.advance(40); return CR.state(); };
+    return [once(), once()];
+  });
+  expect(b).toEqual(a);
+});
+
 /* THE important one. */
 test('the simulation is unchanged after forty seconds', async ({ page }) => {
   await bootFresh(page, 40);

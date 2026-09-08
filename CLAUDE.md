@@ -58,9 +58,14 @@ The safety net for all of it is `e2e/smoke.spec.ts`. Record before you split, ne
 
 ## Invariants
 
-- **Nothing that affects game state may use `Math.random`.** Every spawn decision goes
-  through `hash(a, b)` seeded on (chunk, ascent). That determinism is what makes the
-  forty-second golden test possible, and it is the strongest tool this repo has.
+- **Nothing that affects game state may use `Math.random`.** Decisions keyed on a place go
+  through `hash(a, b)` seeded on (chunk, ascent); everything else draws from `rnd`, the
+  per-ascent stream from `makeRng`. Cosmetic jitter — crew colours, dust motes, camera
+  shake, walk phase — stays on `Math.random` deliberately. The hard part is that "cosmetic"
+  is not obvious: loot scatter velocity decides when a coin comes within magnet reach, so it
+  decides when gold lands, so it is simulation. Anything that decides *when* is simulation.
+  That determinism is what makes the forty-second golden possible, and it is the strongest
+  tool this repo has.
 - **A signed shift in a hash silently halves its range.** It did here for the game's whole
   life, deleting three mechanics with no error and no visible symptom. `NOTES.md` has the
   full account. Test the random source, not just what it produces.
