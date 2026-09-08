@@ -1,0 +1,121 @@
+# Candle Gift — the reference game, observed
+
+Everything in this file was seen directly, not inferred. Written after two rebuilds that were
+built on inference and got the presentation wrong both times. **Read this before changing how
+the game looks or what a station does.**
+
+## The game
+
+**Candle Gift**, Rollic Games. Android package `com.TwoPageGames.CandleGift`, iOS id
+`1602811087`. Last version **4.3.28, 21 Oct 2023**.
+
+**It is delisted.** The US App Store and Google Play listings both 404 as of 2026-09-07, which
+is why there is so little written about it and why the first two attempts had so little to go
+on. The listing survives on APK mirrors.
+
+## Sources
+
+- **APKCombo listing** — `https://apkcombo.app/candle-gift/com.TwoPageGames.CandleGift/`
+  Carries the 8 official store screenshots. (apkpure is behind a Cloudflare bot check.)
+- **The 8 store screenshots**, on Google's CDN. Append `=w900` for full size:
+  ```
+  play-lh.googleusercontent.com/u8oKKRTLXpN2e7Iz0_UwLsojWrI4Dc0Djxm-pFW3enIIfSKQJi1Imu9uBIeYKRrHRaqI
+  play-lh.googleusercontent.com/4Eu0khr2CvebwGRa3N9jGlHzRxi86q8hcIMP8_a3ppstCaFpwJdzifFkKDMwNS0ih9U
+  play-lh.googleusercontent.com/rBPcB1q5xG4MpkPqfuBm2dd0gOMjU2hAYPCmVTagCGuSwP6N-p8FB4ExIOCa_F9RNw
+  play-lh.googleusercontent.com/lJse651Kw2YIQlsVmPrcIy4u0uba78v1XOJVdJjrXOuVPqTnpaZFtSfjW_ovxs6wzFGW
+  play-lh.googleusercontent.com/2vnpiUhF3htP608q6f3h0FYCm02hCxxz8oE52kZyWDg3BfzyMJQ8uOAA-GBcPN8s_IOf
+  play-lh.googleusercontent.com/b7ez7U7tM1DqhkgIMobvNG_Wzgza6xrIrRzjp88nNobI7Lyh6KG6Iq-0MGlHK1ZGyRg
+  play-lh.googleusercontent.com/LJUbVPNZZ6-604BsfC6jzyUs-vNk9iZ4UuUfAPLvbXMip4UzMGZhONzxmp2zHhklEg
+  play-lh.googleusercontent.com/YupBWFtP1M9UHhTdwSmpvxH58pAHWuvQBaaBrUUCn8gIV3PRh-mfImPbCYR-YkOxKto
+  ```
+- **Gameplay video** — `youtube.com/shorts/Zjr68UJqeTM` (@mimii_gaming), sent by Gideon. This
+  is the single best source: it shows a whole run including the stations, the obstacles and
+  the end-of-run shops.
+- **Gamezebo strategy guide** — the only written source with real mechanics in it.
+
+## What the player controls
+
+A **long slab of wax lying along the track**, made of discrete segments, with small gold
+candle wicks poking out along one edge. It **grows lengthwise** as you collect, which is what
+the guide means by *"as your candle stack gets longer, you need to be aware of everything
+happening in front of you, and sometimes you need to start moving well before an obstacle is
+in reach"*. It is not a crowd and it is not a single candle.
+
+**Each segment is coloured by the pool it passed through.** In one frame the back half of the
+slab is pink and the front half is blue with glitter on it — because those parts of the slab
+were in different places when they crossed the stations. That is the whole game.
+
+## Stations
+
+All signed with a **hot-pink pill label** hanging from a thin dark **curved lamp-post arm**
+at the edge of the track, pointing inward.
+
+| Sign | What it is |
+|---|---|
+| **CANDLE** | A **pool of coloured wax lying in the track**, roughly half the width, with a swirled liquid surface. A **ladle on the curved arm tips and pours into it.** Two often appear side by side in different colours — the guide says to swipe left and right to get all your candles into both. |
+| **GLITTER** | A tilted **bottle** on an arm sprinkling multicoloured glitter over the track. Adds sparkle to whatever passes under it. |
+| **ROTATE** | A white platform with a big curved white arrow. **Turns the slab.** We do not have this. |
+| **MOLD** | A pink column press with a **yellow star** on it, stamping a shape. |
+| **WRAP** | A giant **gift box with a bow** at the track edge. Turns the segments into **wrapped gift boxes with pink bows**, stacked. |
+
+## Obstacles
+
+- **Red `X X X` bars** across part of the track — flat red panels with white crosses.
+- **Columns of red spiked octahedra** standing at the track edge and in it.
+- **Orange/salmon diagonal bars** sweeping across the track, marked with dark blue chevrons.
+
+## Pickups
+
+- **Gold/yellow candles lying flat** on the track, scattered across the width. This is how the
+  slab grows.
+- **Green price tags** reading `5 $`, `154 $`, `610 $` etc. Money.
+- Floating **`+208$` / `+304$` / `+240$`** green text when value is added.
+
+## End of a run
+
+1. A **vertical value gauge** with a numeric scale (20/40/60/80/100/120/140) measures the
+   finished product against a target.
+2. The finished candles are shown **stacked on a dark podium**, wrapped, with bows and
+   decorated tops.
+3. The run ends in a **shop area with panels either side of the track**, bought with the
+   money earned:
+   - **SCENT SHOP — $4,000**
+   - **ONLINE SHOP — $1,000**
+   - **LUXURY SHOP — $?,000** (partially visible)
+   Each has a green **+** button. These are the "extra stations like the boutique" that a
+   store review mentions — **progression is buying new shops/stations, not stat upgrades.**
+
+## Art direction
+
+- **Sky:** flat bright cyan.
+- **Track:** two themes seen — **white with pale lavender stripes and lilac edge rails**, and
+  **deep purple**. Ours is purple only.
+- **Signs:** hot-pink pills, white bold caps, on thin dark curved arms.
+- **Skyline:** pale blue-white **stacked cylinder towers** (like giant candle stacks) and low
+  boxy blocks either side, well below the track.
+- **Wax pools:** strong flat colour with a swirled, marbled lighter texture.
+- **Money:** a green tag shape with a hole, not a banknote.
+
+## Where our build differs
+
+Matching already: the trailing object that lags, half-width wax pools in pairs, per-segment
+colour, loose candles as the growth mechanic, glitter/mould/wrap stations, pink pill signs,
+green money, red barriers and spiked rollers, a value-based sell at the end.
+
+Known differences, in rough order of how much they would move the resemblance:
+
+1. **We draw upright separate candles; it draws one long segmented slab lying down.**
+2. **No ROTATE station.**
+3. **Progression is stat upgrades; theirs is buying shops** (Scent / Online / Luxury).
+4. **Our track is purple only** — the white/lavender theme is the one in most screenshots.
+5. **No value gauge at the end** — we show a star rating and an itemised card.
+6. **Signs sit on a gantry with posts**; theirs hang from single curved arms.
+7. **No swirled texture on the pool surface**, no stacked-cylinder skyline.
+8. Wrapped candles become **gift boxes with bows**; ours get a ribbon band.
+
+## Still unknown
+
+- The **upgrade/shop screen** itself — only the in-track shop panels have been seen, not
+  whatever menu they open.
+- Whether levels are themed sets or a continuous ladder.
+- Whether the slab can be lost entirely, and what failure looks like.

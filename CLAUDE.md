@@ -5,9 +5,14 @@ side at every gantry — a wax vat, a glitter sprinkler, a press or a bow — do
 and saws that knock candles off the back, sweep up the banknotes, and sell the tray at the
 gift table.
 
-Modelled closely on **Candle Gift** by Rollic Games (`com.TwoPageGames.CandleGift`, 2022),
-at Gideon's request, from screenshots his girlfriend sent and from the game's own strategy
-guide. See `NOTES.md` for what was taken from it and what was invented.
+Modelled on **Candle Gift** by Rollic Games (`com.TwoPageGames.CandleGift`), at Gideon's
+request.
+
+**`REFERENCE.md` is the observed record of that game — read it before changing how anything
+looks or what a station does.** It has the store screenshots, a gameplay video, the full
+station and obstacle list, and an honest list of where this build still differs. Two rebuilds
+were made on inference before it existed and both got the presentation wrong; the game is
+delisted, so that file is now the primary source.
 
 Live: **https://gideon6222.github.io/Captain_Run/**
 Repo: github.com/gideon6222/Captain_Run
@@ -58,6 +63,7 @@ npm run size       # bundle size guard, fails in both directions
 | `src/gfx.ts` | Toon materials, inverted-hull outlines, the instanced `Layer` |
 | `src/changelog.js` | `VERSION` and the patch notes shown in the workshop |
 | `e2e/smoke.spec.ts` | 25 tests against the built game, including the thirty-second golden |
+| `REFERENCE.md` | **What the real game actually does**, observed from its screenshots and a gameplay video |
 | `NOTES.md` | Design decisions, tuning as shipped, and what to do next |
 
 ## The two axes
