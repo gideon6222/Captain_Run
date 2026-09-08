@@ -73,7 +73,10 @@ barrier yourself and drag the back half of your tray through it.
 - Ten stations at fixed chunks, each a **pair of pools** 11 units long: wax early and often,
   glitter and press through the middle, rotate and wrap late, scent once it is bought.
 - No gates. The slab grows only by collecting loose candles off the runway.
-- Barriers take 3 candles, rollers 2, saws 4, the sweeper 3, before the Steady Tray upgrade.
+- Three obstacle kinds, all coral, all drawn from the reference's own screenshots: a rimmed
+  hazard panel with a white cross, a spiked axle on a post at the rail reaching part way
+  across, and a salmon bar that slides diagonally with a navy arrowhead on its leading end.
+- Barriers take 3 candles, rollers 3, the sweeper 3, before the Steady Tray upgrade.
 - The sweeper is the only obstacle that **moves**, and its position is a function of `run.z`
   rather than of elapsed time — the same thing at a constant speed, and reproducible, so the
   golden still holds.
@@ -127,6 +130,31 @@ Gideon sent a gameplay video and asked for the base game to match it before impr
 - **Stacked-candle towers** below the track, and **shop fronts** either side past the finish.
 - **Fredoka**, self-hosted, 30 KB — the single highest-return asset import in the game.
 
+## The trap pass (v4.1.0)
+
+Gideon, having played it: *"some of the small traps that you have set up feel like they're
+just copied in from the first version that you created"*. He was right about all of them.
+
+Everything below came from **magnifying the store screenshots in a canvas** rather than
+looking at them at page size — `drawImage(img, sx, sy, sw, sh, 0, 0, big, big)` with
+`imageSmoothingEnabled = false`. The detail was always there; it is 40 pixels wide.
+
+- The **saw was deleted.** A circular blade on a post is in none of the eight screenshots
+  and none of the video. It came from the viking runner this repo held two games ago.
+- The **hazard panel** got a darker rim behind a recessed face, a bigger white cross, and
+  half again the size. The rim is the single detail that separates it from a red box.
+- The **spiked roller** became what the reference actually draws: a pale post standing
+  *outside the rail* with a shaft reaching part way across, carrying interlocking coral
+  diamonds. `x` and `w` are derived from `side` and `reach`, so the collision box is the
+  drawing.
+- The **sweeper** lost its chevrons for a big dark-navy arrowhead on the leading end plus
+  two trailing dashes — and the arrowhead flips with the direction of travel, which is the
+  only thing the player needs from it.
+- **Loose candles** were cream with a gold tip. The reference has them gold with a *pale*
+  tip — exactly inverted — and scattered at all angles rather than aligned.
+- **Money** became a green price tag with a punched white hole, which is the shape in every
+  screenshot.
+
 ## What this build got wrong first, and what fixed it
 
 Recorded because each one is cheap to reintroduce.
@@ -163,6 +191,14 @@ Recorded because each one is cheap to reintroduce.
 15. **A sweeper with no gap.** At its drawn half-width plus the standard 0.34 tolerance it
     covered 61% of the steerable band at every point in its swing. A moving obstacle with no
     gap is not an obstacle, it is a tax.
+16. **Backfilling a deleted obstacle's slot.** Removing the saw and putting a third barrier
+    where it used to spawn kept the runway exactly as busy, and took the weaving bot from
+    39,134 to 32,469 — every second spent dodging is a second not spent in a pool. Removing
+    an obstacle kind means removing its share of the danger.
+17. **A par measured on one level.** A single policy swings 25% on layout luck: dodging
+    scores 18,158 on level 1 and 1,350 on level 5, where it is worse than doing nothing. Par
+    now comes from the mean over six levels; the e2e test pins level one's ratings as a
+    regression guard and says so.
 
 ## Known gaps / next
 

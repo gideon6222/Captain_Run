@@ -60,15 +60,34 @@ at the edge of the track, pointing inward.
 
 ## Obstacles
 
-- **Red `X X X` bars** across part of the track — flat red panels with white crosses.
-- **Columns of red spiked octahedra** standing at the track edge and in it.
-- **Orange/salmon diagonal bars** sweeping across the track, marked with dark blue chevrons.
+Three, and every hazardous thing in the game is in the same **coral/salmon** family, so
+"this hurts" is one colour the player learns once. Read off the store screenshots at full
+size (crop and magnify them in a canvas — the detail is there, it is just small).
+
+- **Hazard panel.** A coral slab standing across part of the track, with a **darker coral
+  rim** around a slightly recessed face and **white cross markings** on it. Rounded corners.
+  Seen edge-on the crosses foreshorten into dashes and dots, which is what they look like in
+  the wide shots.
+- **Spiked axle.** A **pale grey-mauve post standing outside the rail**, with a shaft
+  reaching **part way across** the track carrying a row of **coral octahedral diamonds**
+  that interlock rather than sit apart. It never spans the full width — the gap is always on
+  the far side.
+- **Sweeper.** A **thin salmon bar lying diagonally** across the track, close to the surface,
+  with a **large dark-navy arrowhead** at its outer end and **short salmon dashes** trailing
+  behind it. Sometimes two of them crossing in an X, both anchored on the same side. The
+  arrowhead is the tell: it is the one obstacle that moves.
+
+**There is no saw.** A circular blade on a post appears in none of the eight screenshots or
+the video; ours had one for three versions, inherited from the viking runner this repo used
+to hold.
 
 ## Pickups
 
-- **Gold/yellow candles lying flat** on the track, scattered across the width. This is how the
-  slab grows.
-- **Green price tags** reading `5 $`, `154 $`, `610 $` etc. Money.
+- **Gold/yellow candles lying flat** on the track, scattered across the width and **at
+  assorted angles**, each with a **pale, almost white tapered tip**. Body gold, tip pale —
+  ours had that exactly inverted for three versions. This is how the slab grows.
+- **Green price tags** reading `5 $`, `154 $`, `610 $` etc. A rounded deep-green tag with a
+  **punched white hole at one end**, lying flat on the track.
 - Floating **`+208$` / `+304$` / `+240$`** green text when value is added.
 
 ## End of a run
@@ -119,12 +138,19 @@ Closed in v4.0.0 — every item on the previous list:
 Also matched since: the sweeper (orange diagonal bar, dark blue chevrons), shop fronts either
 side of the track past the finish line, and Fredoka for the type.
 
+Closed in v4.1.0: all three obstacles rebuilt from the screenshots (rimmed hazard panel,
+rail-anchored spiked axle, salmon sweeper with a navy arrowhead), the saw deleted, loose
+candles turned gold with pale tips and scattered at angles, and money turned into a green
+tag with a punched hole.
+
 Still open, in rough order of how much they would move the resemblance:
 
 1. **The shop fronts are scenery.** Theirs are bought in the track, with a green `+` per
    panel; ours draw the panels and open a sheet.
 2. **The finished batch is not shown on a dark podium.** We light it in place on the runway.
-3. **Money is a flat green tag with a hole**; ours is a green slab with a dark mark on it.
+   Screenshot 5 shows the podium clearly: **dark navy**, with the wrapped bundles standing on
+   it and the value gauge rising behind.
+3. **Price tags carry no number.** Theirs read `5 $`, `154 $`; ours are a blank tag.
 4. **We have not seen their upgrade screen at all**, so ours is ours.
 
 ## Still unknown

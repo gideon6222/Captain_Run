@@ -67,18 +67,28 @@ export const T = {
   magnetBase: 2.0,
 
   /* Obstacles take candles off the back of the loaf. Flat rather than
-     proportional: the player has to be able to look at one and know the cost. */
+     proportional: the player has to be able to look at one and know the cost.
+
+     THREE kinds, because the reference has three: a coral hazard panel, a
+     spiked axle reaching in from a post at the track edge, and a salmon bar
+     that slides diagonally across. The circular saw that used to be here came
+     from the viking runner this repo held before and appears nowhere in any
+     screenshot of the reference - a fourth obstacle nobody can point at in the
+     source is not variety, it is drift. */
   barrierTake: 3,
-  rollerTake: 2,
-  sawTake: 4,
+  rollerTake: 3,
   sweeperTake: 3,
 
   cashPickup: 120,
 
+  /* These went UP when the saw was removed and then most of the way back down
+     again, because the first pass kept the runway as dangerous as it had been
+     with four obstacle kinds and that is what the saw's removal was supposed to
+     relieve. Dodging crowds out weaving: with the higher numbers the weaving
+     bot dropped from 39,134 to 32,469 and lost its third star. */
   barrierChance: 0.40,
-  rollerChance: 0.28,
-  sawChance: 0.20,
-  sweeperChance: 0.26,
+  rollerChance: 0.30,
+  sweeperChance: 0.28,
   cashChance: 0.50,
   looseChance: 0.80,
   guardedCash: 0.55,
@@ -87,19 +97,21 @@ export const T = {
      star rating - see REFERENCE.md. `par` is the value the gauge is calibrated
      against; the ticks are drawn from it.
 
-     MEASURED, not chosen, and measured with a bot that lives in the repo:
-     `playLevel` in `e2e/smoke.spec.ts` plays a whole level under one of four
-     policies, and `par` is picked so they land on different ratings. Level one,
+     MEASURED, not chosen, measured with the bot that lives in the repo
+     (`playLevel` in `e2e/smoke.spec.ts`), and measured over SIX LEVELS rather
+     than one. Values normalised by `priceFor(level)` so they are comparable,
      no upgrades:
 
-       idle    4,912  ($140 each)  - never steers            0 stars
-       dodge  18,158  ($680 each)  - only avoids hazards     1 star
-       gather 14,048  ($447 each)  - only chases pickups     1 star
-       weave  39,134 ($1,312 each) - dodges, sweeps both
-                                     pools, then collects    3 stars
+       policy   L1     L2     L3     L4     L5     L6     mean
+       idle    5,401  2,999  7,487  6,660  2,530  1,612   4,448   0 stars
+       dodge  18,158  4,256 15,903  7,563  1,350 11,260   9,748   1 star
+       gather 14,168 13,192 21,464 22,600 12,654 16,402  16,747   2 stars
+       weave  31,247 15,871 42,426 40,687 16,413 31,911  29,759   3 stars
 
-     Weaving is worth 9.4x idling per candle, which is the number that says the
-     pools are the game.
+     Weaving is worth 6.7x idling, and the *mean* is the number to calibrate on:
+     one level swings a policy by 25% on layout luck alone, and dodge is worse
+     than idling on level 5. An earlier par set from level 1 by itself put the
+     weaving bot on 3 stars and every other level on 2.
 
      Measure with THAT bot and no other. An earlier pass used an ad-hoc policy
      written in the browser console with a slightly longer lookahead, scored
@@ -107,11 +119,11 @@ export const T = {
      of "playing well", so a par measured against a bot nobody can re-run is a
      number nobody can check. Re-measure whenever a station, a multiplier or the
      obstacle mix changes; all three move it. */
-  par: 32000,
+  par: 24000,
   gaugeTicks: 7,
   /* Full scale on the gauge, as a multiple of par. Three stars is 1.15x par, so
      the bar has to keep going well past that or a good run pegs it and a great
-     run looks identical to it. At 1.8 the weaving bot fills 68%. */
+     run looks identical to it. At 1.8 the weaving bot fills about 72%. */
   gaugeMax: 1.8,
 
   levelScale: 1.55,

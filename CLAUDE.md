@@ -149,26 +149,44 @@ weaving is worth **9.4× per candle** over never steering.
 
 ## Numbers that are calibrated, not chosen
 
-- **`par: 32000` and `STAR_AT = [0.30, 0.60, 1.15]`** — measured, not picked, and measured
-  with **the bot that lives in the repo**: `playLevel` in `e2e/smoke.spec.ts`. Level 1, no
-  upgrades: never steering 4,912 ($140 a candle); dodging only 18,158 ($680); gathering
-  pickups 14,048 ($447); **weaving the pools 39,134 ($1,312)**. Those land on
-  **0 / 1 / 1 / 3 stars**, and `par still separates the four ways of playing a level` fails
-  if they stop doing so.
+- **`par: 24000` and `STAR_AT = [0.30, 0.60, 1.15]`** — measured, not picked, measured with
+  **the bot that lives in the repo** (`playLevel` in `e2e/smoke.spec.ts`), and measured
+  **over six levels, not one**. Means, normalised by `priceFor(level)`, no upgrades: idling
+  4,448; dodging only 9,748; gathering pickups 16,747; **weaving the pools 29,759**. Those
+  land on **0 / 1 / 2 / 3 stars**.
+
+  **One level is not a measurement.** A single policy swings 25% on layout luck — dodging
+  scores 18,158 on level 1 and 1,350 on level 5, where it is worse than idling. Par set from
+  level 1 alone put weaving on three stars there and two everywhere else.
 
   **Measure with that bot and no other.** An earlier pass wrote an ad-hoc policy in the
   browser console with a slightly longer lookahead, scored 64,606 on the same build and set
   par 44% too high. A bot is a *definition of playing well*; a par measured against one
-  nobody can re-run is a number nobody can check.
+  nobody can re-run is a number nobody can check. `par still separates the ways of playing a
+  level` pins **level one's** ratings (0/2/1/3 — level 1 is a good draw for dodging), which
+  is a regression guard, not the calibration.
 - **`gaugeMax: 1.8`.** The end-of-run gauge runs to 1.8 × par, so the weaving bot fills 68%
   of it. At 1.35 a three-star run pegged the bar and a great run looked identical to a good
   one, which is the whole thing the gauge exists to distinguish.
-- **The sweeper's collision half-width is 1.15 against a drawn half-width of 1.5**, and it
+- **The sweeper's collision half-width is 1.15 against a drawn half-width of 1.7**, and it
   swings `laneClamp × 0.55`, not × 0.78. It is the one obstacle that moves, so it is the one
   where the gap has to be *provably* there: at full width and the standard 0.34 tolerance it
   covered 61% of the steerable band at every point in its swing, and the scripted weaving bot
   lost half its slab to it. A moving obstacle with no gap is not an obstacle, it is a tax.
-- **`barrierTake: 3, rollerTake: 2, sawTake: 4, sweeperTake: 3`.** These were 5/3/6 when growth came from
+  The bar is yawed 0.42 rad, so its lateral half-extent is `1.7 × cos(0.42) = 1.55` against
+  a collision reach of `1.15 + 0.34 = 1.49` — that is the pair to keep in step, not the raw
+  numbers.
+- **The spiked roller is anchored to a rail and `x`/`w` are derived from that.** It spawns
+  with a `side` and a `reach`, and the centre and half-width it hands the shared collision
+  test are `side × (roadW/2 − reach/2)` and `reach/2`. Anchoring is what guarantees the gap
+  is on the far side, and deriving the collision box from the drawing is what stops the two
+  drifting apart.
+- **There are THREE obstacle kinds, because the reference has three.** The circular saw was
+  a viking-runner leftover that appears in none of the eight store screenshots. **Removing an
+  obstacle kind means removing its share of the danger, not redistributing it** — backfilling
+  the saw's slot with a third barrier kept the runway equally busy and cost the weaving bot
+  a fifth of its score, because every second spent dodging is a second not spent in a pool.
+- **`barrierTake: 3, rollerTake: 3, sweeperTake: 3`.** These were 5/3/6 when growth came from
   `×2` gates. Growth is now loose candles worth one each, so the old numbers meant a single
   barrier took five of the eight you start with.
 - **`poolLen: 11.0`.** A pool has to be longer than the tray is deep, or it cannot get the

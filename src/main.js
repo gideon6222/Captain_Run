@@ -151,21 +151,43 @@ scene.add(flames, flameCores);
 const W = {
   /* Loose candles lying on the runway, drawn lying along the track so they
      read as stock waiting to be picked up rather than as part of the tray. */
+  /* Loose candles are GOLD with a pale tip, not cream with a gold tip - which
+     is what this had, exactly inverted from every screenshot of the reference.
+     Gold reads as "pick this up" against a white runway; cream is the colour of
+     the candles you already own. */
   looseC:   new Layer(new THREE.CylinderGeometry(0.5, 0.5, 1, 10), 0xffffff, 48, 0.028),
-  looseTip: new Layer(new THREE.ConeGeometry(0.24, 0.46, 7), 0xffd429, 48, 0),
-  cash:     new Layer(box(1.0, 0.06, 0.52), 0x3fce6a, 40, 0.028),
-  cashMark: new Layer(box(0.30, 0.02, 0.30), 0x1c7a3c, 40, 0),
-  barrier:  new Layer(box(1.45, 0.66, 0.26), 0xe8324c, 24, 0.050),
-  barX:     new Layer(box(0.92, 0.13, 0.09), 0xffffff, 48, 0),
-  roller:   new Layer(new THREE.OctahedronGeometry(0.52, 0), 0xc1263c, 40, 0.050),
-  rollBar:  new Layer(box(4.6, 0.13, 0.13), 0x8a1a2c, 14, 0),
-  saw:      new Layer(new THREE.CylinderGeometry(0.85, 0.85, 0.10, 12), 0xdfe6ef, 14, 0.050),
-  sawPost:  new Layer(box(0.20, 2.6, 0.20), 0xb0447a, 14, 0),
-  /* The sweeper: a salmon bar with dark blue chevrons that slides across the
-     lane. The only obstacle that MOVES, which is why it is the one that makes
-     a long loaf feel long - you have to start turning before it is in reach. */
-  sweeper:  new Layer(box(3.0, 0.42, 0.50), 0xff8a4c, 10, 0.050),
-  sweepMark: new Layer(box(0.20, 0.44, 0.52), 0x2b3f7a, 44, 0),
+  looseTip: new Layer(new THREE.ConeGeometry(0.24, 0.46, 7), 0xfff4d8, 48, 0),
+  /* Money is a price TAG - a rounded green tag with a punched hole at one end,
+     lying flat on the track. */
+  cash:     new Layer(box(1.15, 0.09, 0.60), 0x1fa84d, 40, 0.030),
+  cashMark: new Layer(new THREE.CylinderGeometry(0.10, 0.10, 0.16, 8), 0xffffff, 40, 0),
+  /* THE THREE OBSTACLES, drawn from the reference's own screenshots rather
+     than inherited from the game this repo used to hold. Colours read off
+     those screenshots: everything hazardous is CORAL, in the same family, so
+     "this hurts" is one colour the player learns once.
+
+     1. The hazard panel - a tall coral slab with a darker rim and white
+        crosses, standing across part of the track.
+     2. The spiked axle - a pale post at the track EDGE with a shaft reaching
+        part way across, carrying a row of coral diamonds that turn. Anchoring
+        it to a rail is not decoration: it is what guarantees the gap is on the
+        other side.
+     3. The sweeper - a thin salmon bar lying diagonally, with a big dark navy
+        arrowhead at its outer end showing which way it is going and a couple
+        of short dashes trailing behind it. The one that moves. */
+  barrier:  new Layer(box(1.9, 1.12, 0.28), 0xf04a3c, 24, 0.055),
+  barRim:   new Layer(box(2.04, 1.26, 0.18), 0xcf3020, 24, 0),
+  barX:     new Layer(box(1.02, 0.15, 0.10), 0xffffff, 60, 0),
+  /* The diamonds OVERLAP along the axle - spaced 0.92 against a 0.74 radius -
+     because a row of separated diamonds reads as beads on a string and a row
+     that interlocks reads as one spiked drum, which is the thing in the
+     reference. */
+  spike:    new Layer(new THREE.OctahedronGeometry(0.74, 0), 0xf4665a, 44, 0.050),
+  axle:     new Layer(new THREE.CylinderGeometry(0.12, 0.12, 1, 8), 0xcfc4da, 12, 0),
+  axlePost: new Layer(box(0.40, 3.4, 0.40), 0x8f8299, 12, 0.045),
+  sweeper:  new Layer(box(3.4, 0.30, 0.34), 0xff7a5c, 10, 0.045),
+  sweepTip: new Layer(new THREE.ConeGeometry(0.44, 0.9, 4), 0x1e3a6e, 12, 0),
+  sweepDash: new Layer(box(0.46, 0.13, 0.15), 0xff9c82, 44, 0),
   /* The skyline: pale stacked-cylinder towers well below the track, like giant
      candle stacks. Straight off the reference, and the only thing that gives
      the sky any depth once a cloud has drifted past. */
@@ -716,17 +738,31 @@ function spawnChunk(c) {
     }
   }
   if (c >= 6 && r2 < T.rollerChance * dens) {
+    /* Anchored at one rail and reaching PART WAY across, the way the reference
+       draws it - a post at the edge with the axle over the track. `x` and `w`
+       are then just the centre and half-width of what it covers, so the shared
+       collision test needs to know nothing about any of this. */
+    const side = hash(c, 700 + S.level) > 0.5 ? 1 : -1;
+    /* How far in it reaches. Capped well short of the far rail: at up to 4.05
+       the axle covered all but a sliver of the runway, so clearing it meant
+       committing the whole loaf to the far edge and back, and the seconds that
+       costs come straight out of the next pool. Measured, that alone took the
+       weaving bot from 39,134 to 31,247 without costing it a single extra
+       candle - the damage was to what it had time to do, not to what it had. */
+    const reach = T.laneClamp * (0.70 + hash(c, 702 + S.level) * 0.40);
     obstacles.push({
-      kind: 'roller', x: TU.laneX(hash(c, 700 + S.level)),
-      z: z + 5 + hash(c, 705) * 3, hit: false, spin: hash(c, 710) * 6.28, w: 1.55,
+      kind: 'roller', side, reach,
+      x: side * (T.roadW / 2 - reach / 2), w: reach / 2,
+      z: z + 5 + hash(c, 705) * 3, hit: false, spin: hash(c, 710) * 6.28,
     });
   }
-  if (c >= 9 && r3 < T.sawChance * dens) {
-    obstacles.push({
-      kind: 'saw', x: TU.laneX(hash(c, 800 + S.level)),
-      z: z + 4 + hash(c, 805) * 4, hit: false, spin: 0, w: 0.9,
-    });
-  }
+  /* Nothing took over the slot the saw used to fill, and that is deliberate.
+     Backfilling it with a third barrier kept the runway equally dangerous and
+     cost the game its point: measured, the extra hazard pulled the weaving bot
+     down from 3 stars to 2 and from 39,134 to 32,469, because every second
+     spent dodging is a second not spent in a pool. **Removing an obstacle kind
+     means removing its share of the danger, not redistributing it.** */
+  void r3;
   /* The sweeper slides, and its position is a function of `run.z` rather than
      of elapsed time. The same thing at a constant speed - and unlike a clock it
      is reproducible, so the golden still holds. Anything that decides *when* is
@@ -757,6 +793,9 @@ function spawnChunk(c) {
       loose.push({
         x: clamp(lx + sweep * (t - 0.5) * 2, -T.laneClamp, T.laneClamp),
         z: z + 2 + t * 8.0, spin: hash(c, 955 + i) * 6.28,
+        /* Which way it happens to be lying. Cosmetic, but drawn from hash so it
+           does not change under the camera. */
+        lie: (hash(c, 970 + i) - 0.5) * 1.5,
       });
     }
   }
@@ -1284,7 +1323,7 @@ function stationFx(h, x, z) {
 function updateObstacles(dt, n) {
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const o = obstacles[i];
-    o.spin += dt * (o.kind === 'saw' ? 9 : 2.4);
+    o.spin += dt * (o.kind === 'roller' ? 3.2 : 2.4);
     /* Set BEFORE the culling returns below, because the renderer reads o.x and
        a sweeper that only moved while it was collidable would visibly jump the
        moment it stopped being one. */
@@ -1301,9 +1340,8 @@ function updateObstacles(dt, n) {
     if (!struck) continue;
 
     o.hit = true;
-    const base = o.kind === 'barrier' ? T.barrierTake
-      : o.kind === 'roller' ? T.rollerTake
-      : o.kind === 'sweeper' ? T.sweeperTake : T.sawTake;
+    const base = o.kind === 'roller' ? T.rollerTake
+      : o.kind === 'sweeper' ? T.sweeperTake : T.barrierTake;
     const lost = TR.shrink(run.tray, takeOf(base));
     run.lost += lost;
     if (lost > 0) {
@@ -1586,12 +1624,16 @@ function writeWorld() {
      as unfinished stock rather than as something already decorated. */
   for (const c of loose) {
     const y = 0.34 + Math.sin(c.spin) * 0.05;
-    /* Rotated about X so the cylinder lies ALONG the runway; the flame tip then
-       sits at +z of the body rather than beside it. */
-    QT.setFromAxisAngle(V.set(1, 0, 0), Math.PI / 2);
+    /* Rotated about X so the cylinder lies ALONG the runway, then turned about
+       Y by its own fixed angle: the reference scatters them at every angle, and
+       a dozen identical capsules all pointing the same way reads as a printed
+       pattern rather than as stock lying where it fell. */
+    QT.setFromAxisAngle(V.set(1, 0, 0), Math.PI / 2)
+      .premultiply(QT2.setFromAxisAngle(V.set(0, 1, 0), c.lie));
     M2.compose(V2.set(c.x, y, c.z), QT, V.set(0.5, 1.15, 0.5));
-    W.looseC.push(M2, CTMP.setHex(0xfff0d0));
-    M2.compose(V2.set(c.x, y, c.z + 0.72), QT, V.set(0.9, 0.9, 0.9));
+    W.looseC.push(M2, CTMP.setHex(0xffc61a));
+    M2.compose(V2.set(c.x + Math.sin(c.lie) * 0.72, y, c.z + Math.cos(c.lie) * 0.72),
+      QT, V.set(0.9, 0.9, 0.9));
     W.looseTip.push(M2);
   }
 
@@ -1600,47 +1642,73 @@ function writeWorld() {
     QT.setFromAxisAngle(V.set(0, 1, 0), b.bob * 0.4);
     M2.compose(V2.set(b.x, y, b.z), QT, ONE);
     W.cash.push(M2);
-    M2.compose(V2.set(b.x, y + 0.05, b.z), QT, ONE);
+    // the punched hole, at the left end of the tag
+    M2.compose(V2.set(b.x - Math.cos(b.bob * 0.4) * 0.42, y + 0.02,
+      b.z + Math.sin(b.bob * 0.4) * 0.42), QT, ONE);
     W.cashMark.push(M2);
   }
 
   for (const o of obstacles) {
     if (o.hit) continue;
     if (o.kind === 'barrier') {
-      M2.compose(V2.set(o.x, 0.46, o.z), QT.identity(), ONE);
+      /* Rim first, set a hair behind the face, so the panel reads as a framed
+         sign rather than a slab - which is the single detail that separates
+         the reference's barrier from a red box. */
+      M2.compose(V2.set(o.x, 0.68, o.z + 0.06), QT.identity(), ONE);
+      W.barRim.push(M2);
+      M2.compose(V2.set(o.x, 0.68, o.z), QT.identity(), ONE);
       W.barrier.push(M2);
       for (let k = 0; k < 2; k++) {
-        QT.setFromAxisAngle(V.set(0, 0, 1), k ? 0.92 : -0.92);
-        M2.compose(V2.set(o.x, 0.46, o.z - 0.15), QT, ONE);
+        QT.setFromAxisAngle(V.set(0, 0, 1), k ? 0.86 : -0.86);
+        M2.compose(V2.set(o.x, 0.68, o.z - 0.16), QT, ONE);
         W.barX.push(M2);
       }
     } else if (o.kind === 'roller') {
-      M2.compose(V2.set(o.x, 0.55, o.z), QT.identity(), ONE);
-      W.rollBar.push(M2);
-      for (let k = -1; k <= 1; k++) {
-        QT.setFromAxisAngle(V.set(0, 0, 1), o.spin);
-        M2.compose(V2.set(o.x + k * 0.95, 0.55, o.z), QT, ONE);
-        W.roller.push(M2);
-      }
-    } else if (o.kind === 'sweeper') {
-      /* Angled about Y, so it is a diagonal bar rather than a wall - the
-         difference between "you cannot pass" and "there is a way round it". */
-      const a = 0.30 * o.dir;
-      QT.setFromAxisAngle(V.set(0, 1, 0), a);
-      M2.compose(V2.set(o.x, 0.55, o.z), QT, ONE);
-      W.sweeper.push(M2);
-      for (let k = 0; k < 4; k++) {
-        const t = (k - 1.5) * 0.66;
-        M2.compose(V2.set(o.x + t * Math.cos(a), 0.55, o.z - t * Math.sin(a)), QT, ONE);
-        W.sweepMark.push(M2);
+      // the post, standing outside the rail on the anchored side
+      const px = o.side * (T.roadW / 2 + 0.55);
+      M2.compose(V2.set(px, 1.7, o.z), QT.identity(), ONE);
+      W.axlePost.push(M2);
+      // the shaft, laid along x from the post to the inner end of the reach
+      const inner = o.side * (T.roadW / 2 - o.reach);
+      QT.setFromAxisAngle(V.set(0, 0, 1), Math.PI / 2);
+      M2.compose(V2.set((px + inner) / 2, 1.0, o.z), QT, V.set(1, Math.abs(px - inner), 1));
+      W.axle.push(M2);
+      // and the diamonds threaded on it, turning together
+      const n = Math.max(2, Math.round(o.reach / 0.92));
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n;
+        QT.setFromAxisAngle(V.set(1, 0, 0), o.spin + k * 0.4);
+        M2.compose(V2.set(o.side * (T.roadW / 2) - o.side * o.reach * t, 1.0, o.z), QT, ONE);
+        W.spike.push(M2);
       }
     } else {
-      QT.setFromAxisAngle(V.set(0, 0, 1), Math.PI / 2)
-        .premultiply(new THREE.Quaternion().setFromAxisAngle(V.set(1, 0, 0), o.spin));
-      M2.compose(V2.set(o.x, 1.0, o.z), QT, ONE);
-      W.saw.push(M2);
-      M2.compose(V2.set(o.x, 1.3, o.z + 0.32), QT.identity(), ONE);
-      W.sawPost.push(M2);
+      /* Angled about Y, so it is a diagonal bar rather than a wall - the
+         difference between "you cannot pass" and "there is a way round it".
+         The arrowhead points the way it is currently sliding, which is the one
+         thing a player needs from it and the reason the reference draws it. */
+      const a = 0.42 * o.dir;
+      const vx = Math.cos(o.phase + run.z * 0.26 * o.dir) * o.dir;
+      const way = vx >= 0 ? 1 : -1;
+      QT.setFromAxisAngle(V.set(0, 1, 0), a);
+      M2.compose(V2.set(o.x, 0.32, o.z), QT, ONE);
+      W.sweeper.push(M2);
+
+      /* The navy arrowhead, at the leading end. A cone points +y, so it is
+         rolled about z to point along x and then yawed with the bar, or it
+         points along the track while the bar it is stuck to points across it. */
+      QT2.setFromAxisAngle(V.set(0, 0, 1), -way * Math.PI / 2)
+        .premultiply(Q.setFromAxisAngle(V.set(0, 1, 0), a));
+      M2.compose(V2.set(o.x + way * 1.95 * Math.cos(a), 0.32, o.z - way * 1.95 * Math.sin(a)),
+        QT2, ONE);
+      W.sweepTip.push(M2);
+
+      // and two short dashes trailing it
+      for (let k = 1; k <= 2; k++) {
+        const t = -way * (1.3 + k * 0.62);
+        M2.compose(V2.set(o.x + t * Math.cos(a) + way * 0.5, 0.32, o.z - t * Math.sin(a)),
+          QT, ONE);
+        W.sweepDash.push(M2);
+      }
     }
   }
 

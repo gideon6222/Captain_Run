@@ -8,9 +8,21 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '4.0.0';
+export const VERSION = '4.1.0';
 
 export const CHANGELOG = [
+  {
+    version: '4.1.0', date: '2026-09-08', title: 'The traps, drawn from life',
+    notes: [
+      'Every obstacle rebuilt from the real game\u2019s own screenshots instead of being carried over from the viking runner this repo used to hold.',
+      'Barriers are coral panels with a darker rim and a white cross, and they are bigger \u2014 you can read one from further away.',
+      'The spiked roller now stands on a post at the track edge and reaches part way across on a shaft, so the gap is always on the other side.',
+      'The sweeper is a thin salmon bar with a big navy arrowhead showing which way it is sliding, and dashes trailing behind it.',
+      'The circular saw is gone. It was never in the game we are modelling.',
+      'Loose candles are gold with pale tips and lie at all angles, and money is a green price tag with a punched hole.',
+      'Fewer obstacles overall: the runway lost the saw\u2019s share of the danger rather than redistributing it, so there is more room to work the pools.'
+    ]
+  },
   {
     version: '4.0.0', date: '2026-09-08', title: 'One long candle',
     notes: [
