@@ -1539,15 +1539,22 @@ let last = performance.now(), lastDt = 0.016;
 const camPos = new THREE.Vector3(0, 6, -9);
 const camLook = new THREE.Vector3();
 
+/* Set by the headless harness only. See `freeze` in boot(). */
+let harnessFrozen = false;
+
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000;
   last = now;
   if (dt > 0.05) dt = 0.05;
-  tick(dt);
+  if (!harnessFrozen) tick(dt);
 }
 
-function tick(dt) {
+/* `draw` exists only for the headless harness. Everything above the final line
+   builds the frame - instance matrices, camera, HUD - and none of it reads
+   back from the renderer, so skipping the rasterisation leaves the simulation
+   bit-for-bit identical. See the note on `advance` in boot() for why. */
+function tick(dt, draw = true) {
   lastDt = dt;
 
   if (run.hitStop > 0) {
@@ -1588,7 +1595,7 @@ function tick(dt) {
   if (hintTimer > 0) { hintTimer -= dt; if (hintTimer <= 0) hintEl.style.opacity = '0'; }
   syncHUD();
 
-  renderer.render(scene, camera);
+  if (draw) renderer.render(scene, camera);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1603,7 +1610,36 @@ function boot() {
   if (location.search.indexOf('debug') >= 0) {
     window.__CR = {
       run, S, tick,
-      advance: (secs, step) => { const d = step || 0.016; for (let i = 0; i < secs / d; i++) tick(d); },
+
+      /* Hand the clock to the harness.
+
+         Real rAF frames run between page load and the first advance(), and how
+         many of them depends on how fast this particular machine boots the
+         bundle - which quietly makes every recorded number a function of the
+         test runner's mood. It cost an afternoon: the golden was recorded on a
+         slow build, and making the build faster then "broke" it, because the
+         run had simply had less free time to accumulate before the harness
+         took over.
+
+         freeze() stops the rAF tick and restarts the ascent, so advance(n) is
+         exactly n seconds from a clean start, every time, on any machine. */
+      freeze: () => { harnessFrozen = true; startAscent(); },
+
+      /* Only the last frame of a run is drawn.
+
+         Measured: a tick costs 0.28 ms with a real GPU and ~17 ms on the
+         software rasteriser a headless browser falls back to, and forty
+         simulated seconds is 2,500 ticks. Drawing every one of them is the
+         difference between 0.7 s and a test timeout. Nothing in
+         renderer.render() feeds back into game state, so dropping the
+         intermediate frames changes no number the harness reads - and drawing
+         the last one keeps renderer.info.render.calls and every InstancedMesh
+         count honest afterwards. */
+      advance: (secs, step) => {
+        const d = step || 0.016;
+        const n = Math.max(1, Math.round(secs / d));
+        for (let i = 0; i < n; i++) tick(d, i === n - 1);
+      },
       state: () => ({ z: run.z, crew: run.crew, gold: Math.floor(run.gold), iron: Math.floor(run.iron),
         tier: weaponTier(), dps: Math.floor(squadDPS()), enemies: enemies.length, crates: crates.length,
         gates: gates.length, boss: boss ? Math.round(boss.hp) : null, over: run.over, calls: renderer.info.render.calls }),
