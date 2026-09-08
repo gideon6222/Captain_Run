@@ -137,9 +137,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      # enablement turns Pages on for this repo if it is off, which it is:
-      # Captain Run has never actually been served, despite the URL in the
-      # notes. Harmless once it is on.
+      # Pages has never been enabled on this repo - the URL in the README has
+      # always 404'd - and `enablement: true` cannot turn it on by itself:
+      # the workflow token is refused with "Resource not accessible by
+      # integration" on the create-a-pages-site endpoint. Someone with admin
+      # has to set Settings -> Pages -> Source to "GitHub Actions" once. After
+      # that this step is a no-op and every push deploys.
       - uses: actions/configure-pages@v5
         with:
           enablement: true

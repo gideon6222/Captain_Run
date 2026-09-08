@@ -8,6 +8,7 @@ Per-game truth. Where this and the shared phone-game-studio pipeline disagree, *
 | Source | `src/main.js` is the game and is being emptied module by module. `src/tuning.ts`, `src/util.ts`, `src/save.ts` and `src/changelog.js` are out and unit-tested. Every further extraction lands as `.ts`. |
 | three.js | 0.166.0 as an npm dependency, split into its own chunk. No importmap, no CDN. |
 | Deploy | Push to `main`. CI typechecks, unit-tests, size-guards and smoke-tests the real build, then deploys to Pages. **No cache version to bump** — Workbox generates the precache from the hashed output. |
+| Pages | **Never enabled on this repo.** The URL has always 404'd. The workflow cannot turn it on — the token is refused on the create-a-pages-site endpoint — so it needs Settings → Pages → Source = "GitHub Actions", once, by hand. Until then the deploy job is the only red step. |
 | Debug seam | `?debug` exposes `window.__CR` — `freeze()`, `advance(seconds)`, `state()`, `steer(x)`, `T`, `enemies()`, `gates()`, `boss()` and the layer objects. `freeze()` first: it stops the rAF tick and restarts the ascent, so `advance(n)` is exactly n seconds from a clean start rather than n seconds after however long the machine took to boot. |
 
 ## What the game is
