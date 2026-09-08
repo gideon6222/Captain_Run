@@ -1,7 +1,7 @@
 {
-  "name": "Wick",
-  "short_name": "Wick",
-  "description": "Dip a candle through arches of coloured wax, dodge the blades and the heat, and carry the best candle you can to the chandler.",
+  "name": "Candle Gift",
+  "short_name": "Candle Gift",
+  "description": "Run a tray of candles down the line. Dip them in coloured wax, sprinkle glitter, press a shape, tie a bow, and sell the lot at the gift table.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
@@ -10,8 +10,8 @@
     "standalone"
   ],
   "orientation": "portrait",
-  "background_color": "#1a1024",
-  "theme_color": "#3b2340",
+  "background_color": "#3aa8ee",
+  "theme_color": "#3aa8ee",
   "icons": [
     {
       "src": "./icon.svg",

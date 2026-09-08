@@ -3,88 +3,97 @@ import assert from 'node:assert/strict';
 import { loadPure } from './harness.mjs';
 
 const P = await loadPure();
-const { T, WAXES, WORKSHOPS, SCENTS } = P;
+const { T, WAXES, WORKSHOPS, MOULDS, WRAPS, DEF_UP } = P;
 
-const NONE = { core: 0, hard: 0, wick: 0, dye: 0, scoop: 0, hand: 0, bees: 0, mould: 0 };
+const NONE = { ...DEF_UP };
 const up = (o) => ({ ...NONE, ...o });
-const ALL_SCENTS = SCENTS.map((_, i) => i);
 
-/* These tests are not about arithmetic - the arithmetic is one line each and
-   reading it is faster than testing it. They are about the shape of the
-   curves, and about intent: a game that is unaffordable at workshop 4, or an
-   upgrade that costs coins and does nothing, is the failure this file exists
-   to catch before a human meets it. */
+/* Not about arithmetic - the arithmetic is one line each and reading it is
+   faster than testing it. These are about the shape of the curves and about
+   intent: a workshop that is unaffordable, or an upgrade that costs coins and
+   does nothing, is the failure this file exists to catch before a human meets
+   it. */
 
 test('difficulty and prices both compound, and prices compound harder', () => {
-  /* A campaign is the race between these two. If the price a workshop pays did
-     not outpace how hard it is, every level would be a worse deal than the one
-     below it and there would be no reason to climb. */
   assert.ok(T.priceScale > T.levelScale,
     'what a workshop pays must outpace how hard it is, or climbing is a mistake');
-
   assert.equal(P.scaleFor(1), 1, 'workshop 1 is the unscaled baseline');
   assert.ok(P.priceFor(5) > P.priceFor(1) * 6, 'the fifth workshop pays far better');
 });
 
 test('every upgrade actually does something', () => {
-  const base = {
-    startWax: P.startWax(NONE),
-    wick: P.wickLength(NONE, []),
-    shave: P.shaveMul(NONE, []),
-    melt: P.meltMul(NONE, []),
-    drip: P.dripMul(NONE, []),
-    lop: P.lopMul(NONE),
-    magnet: P.magnetR(NONE),
-    value: P.valueMul(NONE, []),
-    layers: P.maxLayers(NONE),
-  };
-  assert.ok(P.startWax(up({ core: 1 })) > base.startWax, 'Thick Core');
-  assert.ok(P.wickLength(up({ wick: 1 }), []) > base.wick, 'Long Wick');
-  assert.ok(P.shaveMul(up({ hard: 1 }), []) < base.shave, 'Hard Wax vs blades');
-  assert.ok(P.meltMul(up({ hard: 1 }), []) < base.melt, 'Hard Wax vs heat');
-  assert.ok(P.dripMul(up({ scoop: 1 }), []) > base.drip, 'Wide Scoop, per droplet');
-  assert.ok(P.magnetR(up({ scoop: 1 })) > base.magnet, 'Wide Scoop, reach');
-  assert.ok(P.lopMul(up({ hand: 1 })) < base.lop, 'Steady Hand');
-  assert.ok(P.valueMul(up({ dye: 1 }), []) > base.value, 'Fine Dyes');
-  assert.ok(P.valueMul(up({ bees: 1 }), []) > base.value, 'Beeswax');
-  assert.ok(P.maxLayers(up({ mould: 1 })) > base.layers, 'Deeper Mould');
+  assert.ok(P.startCandles(up({ stack: 1 })) > P.startCandles(NONE), 'Bigger Batch');
+  assert.ok(P.earnMul(up({ earn: 1 })) > P.earnMul(NONE), 'Earning Power');
+  assert.ok(P.takeMul(up({ grip: 1 })) < P.takeMul(NONE), 'Steady Tray');
+  assert.ok(P.magnetR(up({ reach: 1 })) > P.magnetR(NONE), 'Long Reach');
+  assert.ok(P.bestMould(up({ press: 1 })) > P.bestMould(NONE), 'Press');
+  assert.ok(P.bestWrap(up({ wrap: 1 })) > P.bestWrap(NONE), 'Wrapping');
+  assert.ok(P.vatLayers(up({ vat: 3 })) > P.vatLayers(NONE), 'Deep Vats');
+  assert.ok(P.glitterPer(up({ spark: 3 })) > P.glitterPer(NONE), 'Glitter Cannon');
 });
 
-test('every scent actually does something, and none of them are the same thing', () => {
-  /* A collection whose entries do not change the game is a list of nouns. Each
-     of these is checked through the function it is supposed to move, so a
-     scent added later without wiring fails here rather than on someone's
-     phone three weeks after they found it. */
-  assert.ok(P.shaveMul(NONE, [P.SCENT_BALM]) < P.shaveMul(NONE, []), 'Beeswax Balm');
-  assert.ok(P.dripMul(NONE, [P.SCENT_RESIN]) > P.dripMul(NONE, []), 'Pine Resin');
-  assert.ok(P.wickLength(NONE, [P.SCENT_CLOVE]) > P.wickLength(NONE, []), 'Clove Oil');
-  assert.ok(P.valueMul(NONE, [P.SCENT_MYRRH]) > P.valueMul(NONE, []), 'Myrrh');
-  assert.equal(P.snuffs([P.SCENT_SALT]), false, 'Sea Salt');
-  assert.equal(P.snuffs([]), true);
-  assert.ok(P.meltMul(NONE, [P.SCENT_GLASS]) < P.meltMul(NONE, []), 'Smoke Glass');
-
-  assert.equal(SCENTS.length, 6, 'six scents, one per effect asserted above');
-  assert.equal(new Set(SCENTS.map((s) => s.n)).size, SCENTS.length, 'no duplicate names');
+test('an obstacle always costs at least one candle', () => {
+  /* An obstacle that can be upgraded down to costing nothing is scenery, and
+     the player stops looking at it - which makes every later level worse. */
+  for (let g = 0; g < 40; g++) {
+    const take = P.obstacleTake(T.barrierTake, up({ grip: g }));
+    assert.ok(take >= 1, `grip ${g} reduced a barrier to ${take}`);
+  }
 });
 
-test('a full collection is a real bonus but not a different game', () => {
-  const all = P.valueMul(NONE, ALL_SCENTS) / P.valueMul(NONE, []);
-  assert.ok(all > 1.1 && all < 1.4, `every scent found is worth ${all.toFixed(2)}x, want 1.1-1.4x`);
+test('the press and wrap upgrades cannot point past the tables they index', () => {
+  assert.equal(P.bestMould(up({ press: 999 })), MOULDS.length - 1);
+  assert.equal(P.bestWrap(up({ wrap: 999 })), WRAPS.length - 1);
+  assert.ok(MOULDS[P.bestMould(up({ press: 999 }))], 'and still resolve to a real mould');
+  assert.ok(WRAPS[P.bestWrap(up({ wrap: 999 }))]);
 });
 
-test('the wax ladder is a ladder: hue and price both spread out', () => {
-  assert.ok(WAXES.length >= 5, 'enough waxes for a workshop to offer a real choice');
-  /* The three warm ones existing is the point of the contrast bonus. If every
-     wax were far from every other, contrast would be automatic and the dip
-     arch would stop being a decision. */
-  let warmPairs = 0;
+test('a station always does something, from the very first level', () => {
+  /* The press used to stamp PLAIN onto plain candles on level 1 and print
+     "ALREADY PLAIN" - a station with a gantry and a sign that was a dead beat
+     until an upgrade several levels later. A station that can do nothing
+     teaches the player to stop reading the signs. */
+  assert.ok(P.bestMould(NONE) >= 1, 'the level-1 press must beat an unpressed candle');
+  assert.ok(P.bestWrap(NONE) >= 1, 'and the level-1 wrap station must beat bare');
+  assert.ok(MOULDS[P.bestMould(NONE)].mul > MOULDS[0].mul);
+  assert.ok(WRAPS[P.bestWrap(NONE)].mul > WRAPS[0].mul);
+});
+
+test('the press and wrap ladders are climbable, and the shop knows where they stop', () => {
+  /* If MAX_PRESS and the table disagree, the shop either sells an upgrade that
+     changes nothing or stops one rung short of the best mould in the game. */
+  assert.equal(P.bestMould(up({ press: P.MAX_PRESS })), MOULDS.length - 1);
+  assert.equal(P.bestWrap(up({ wrap: P.MAX_WRAP })), WRAPS.length - 1);
+  for (let i = 0; i < P.MAX_PRESS; i++) {
+    assert.ok(P.bestMould(up({ press: i + 1 })) > P.bestMould(up({ press: i })),
+      `press level ${i} -> ${i + 1} must change the mould`);
+  }
+  for (let i = 0; i < P.MAX_WRAP; i++) {
+    assert.ok(P.bestWrap(up({ wrap: i + 1 })) > P.bestWrap(up({ wrap: i })),
+      `wrap level ${i} -> ${i + 1} must change the wrapping`);
+  }
+});
+
+test('a full tray is a whole number of rows, so no row is ever short', () => {
+  assert.equal(T.maxCandles % T.rowWidth, 0,
+    'a ragged back row reads as candles having fallen off when they have not');
+});
+
+test('the wax ladder is a ladder, and some of it clashes on purpose', () => {
+  assert.ok(WAXES.length >= 5, 'enough waxes for a vat to offer a real choice');
+  assert.equal(WAXES[0].price, 1, 'cream is the baseline');
+  for (let i = 1; i < WAXES.length; i++) {
+    assert.ok(WAXES[i].price > 1, `${WAXES[i].n} should beat plain cream`);
+  }
+  /* If every wax read as different from every other, contrast would be free
+     and the vat would stop being a decision. */
+  let dull = 0;
   for (let i = 0; i < WAXES.length; i++) {
     for (let j = i + 1; j < WAXES.length; j++) {
-      if (P.hueGap(WAXES[i].hue, WAXES[j].hue) <= 0.18) warmPairs++;
+      if (!P.reads2(WAXES[i], WAXES[j])) dull++;
     }
   }
-  assert.ok(warmPairs >= 3,
-    'some waxes must clash-by-being-too-similar, or contrast is free');
+  assert.ok(dull >= 1, 'some pair of waxes must fail to read as two colours');
 });
 
 test('hueGap wraps around the wheel', () => {
@@ -93,38 +102,36 @@ test('hueGap wraps around the wheel', () => {
   assert.equal(P.hueGap(0, 0.5), 0.5);
 });
 
-test('every workshop offers waxes that exist, and the light falls as you climb', () => {
-  let prev = Infinity;
+test('the runway always separates from the sky it floats in', () => {
+  /* The second workshop shipped as a pink road under a pink sky and the track
+     dissolved into the backdrop at about twenty units - which is exactly the
+     distance the player steers by. Hue alone does not save it; the gap has to
+     be in lightness. */
   for (const w of WORKSHOPS) {
-    assert.ok(w.waxes.length >= 3, `${w.name} needs at least three waxes to make a dip a choice`);
+    const road = P.lightnessOf(w.road);
+    for (const s of w.sky) {
+      const gap = Math.abs(P.hexLightness(s) - road);
+      assert.ok(gap > 0.25,
+        `${w.name}: road and sky ${s} are only ${gap.toFixed(2)} apart in lightness`);
+    }
+    /* And the rails have to read against the road they edge. */
+    assert.ok(P.lightnessOf(w.rail) - road > 0.25, `${w.name}: rails vanish into the road`);
+  }
+});
+
+test('every workshop offers waxes that exist and stays bright', () => {
+  for (const w of WORKSHOPS) {
+    assert.ok(w.waxes.length >= 3, `${w.name} needs three waxes to make a vat a choice`);
     for (const i of w.waxes) assert.ok(WAXES[i], `${w.name} offers a wax that does not exist`);
-    assert.ok(w.amb <= prev, `${w.name} must not be brighter than the workshop before it`);
-    prev = w.amb;
+    assert.equal(w.sky.length, 2, `${w.name} needs a two-stop sky`);
+    for (const s of w.sky) assert.match(s, /^#[0-9a-f]{6}$/i, `${w.name} sky must be a hex colour`);
   }
-  /* The Deep Dark being nearly black is the whole reason the flame is a light
-     source. If someone raises it "so you can see", that is the mechanic gone. */
-  assert.ok(WORKSHOPS[WORKSHOPS.length - 1].amb < 0.2, 'the last workshop is lit by your candle');
+  assert.equal(new Set(WORKSHOPS.map((w) => w.name)).size, WORKSHOPS.length);
 });
 
-test('ambient never falls far enough to kill the toon bands', () => {
-  for (let lvl = 1; lvl <= 12; lvl++) {
-    assert.ok(P.ambientFor(lvl) >= 0.12, `workshop ${lvl} went below the banding floor`);
-  }
-});
-
-test('a heat lamp costs wax faster than it costs wick', () => {
-  /* Otherwise it is a slower blade with extra steps. The point of heat is that
-     it is a place you can choose to spend time in - the melt is the price and
-     the wick is the pressure not to loiter. */
-  assert.ok(T.heatMelt > T.heatWick, 'heat is primarily a wax cost');
-  assert.ok(T.heatWick > 0, 'and it still hurries you along');
-});
-
-test('everything placed on the road lands inside the band a thumb can reach', () => {
+test('everything placed on the runway lands inside the band a thumb can reach', () => {
   /* A hazard outside the steering clamp cannot be dodged *or* hit - it is
-     drawn, it is in the level, and it never once interacts with the player.
-     That is the same failure as a content band below the deepest reachable
-     ground, and it has exactly the same symptom: none. */
+     drawn, it is in the level, and it never once interacts with the player. */
   let min = Infinity, max = -Infinity;
   for (let i = 0; i <= 2000; i++) {
     const x = P.laneX(i / 2000);
@@ -132,17 +139,23 @@ test('everything placed on the road lands inside the band a thumb can reach', ()
   }
   assert.ok(min >= -T.laneClamp, `laneX went to ${min}, past the clamp`);
   assert.ok(max <= T.laneClamp, `laneX went to ${max}, past the clamp`);
-
-  /* And it must actually use the band, or every hazard is in the middle and
-     steering stops being the game. */
   assert.ok(min < -T.laneClamp * 0.95 && max > T.laneClamp * 0.95,
-    'laneX must reach both edges, or the road is one lane wide');
-
-  const inset = P.laneX(0.5, 0.4);
-  assert.equal(inset, 0, 'the inset must not shift the centre');
+    'laneX must reach both edges, or the runway is one lane wide');
+  assert.equal(P.laneX(0.5, 0.4), 0, 'the inset must not shift the centre');
 });
 
-test('the big side of a dip arch is genuinely bigger', () => {
-  assert.ok(T.vatWaxBig > T.vatWaxBase * 1.5,
-    'if the two sides are close, the arch is not a decision');
+test('the runway is wider than the band the player steers in', () => {
+  /* The shoulders are what the play space reads against. If they vanish, the
+     track is exactly as wide as the game and stops looking like a place. */
+  assert.ok(T.roadW / 2 > T.laneClamp, 'the road mesh must be wider than laneClamp');
+});
+
+test('a full stack still fits in the trail buffer', () => {
+  /* The buffer is what remembers where the leader has been. If the longest
+     stack asks for a position further back than the buffer can hold, the tail
+     silently bunches up at the oldest sample - which looks like the stack
+     collapsing for no reason. */
+  const needed = T.trailGap * T.maxCandles;
+  assert.ok(T.trailSamples * 0.02 > needed * 1.5,
+    `buffer holds ~${(T.trailSamples * 0.02).toFixed(0)} units, longest stack needs ${needed.toFixed(0)}`);
 });

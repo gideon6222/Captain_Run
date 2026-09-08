@@ -1,17 +1,22 @@
-# Wick
+# Candle Gift
 
-Candle-dipping runner. Steer a candle up a workshop road, pass through arches of coloured
-wax that add rings, dodge blades that shave them off and heat that melts them, race the
-wick, and sell the finished candle to the chandler between runs.
+A candle-factory runner. Steer a tray of candles down a runway floating in open sky, pick a
+side at every gantry — a wax vat, a glitter sprinkler, a press or a bow — dodge the barriers
+and saws that knock candles off the back, sweep up the banknotes, and sell the tray at the
+gift table.
+
+Modelled closely on **Candle Gift** by Rollic Games (`com.TwoPageGames.CandleGift`, 2022),
+at Gideon's request, from screenshots his girlfriend sent and from the game's own strategy
+guide. See `NOTES.md` for what was taken from it and what was invented.
 
 Live: **https://gideon6222.github.io/Captain_Run/**
 Repo: github.com/gideon6222/Captain_Run
 Target: Samsung S26 Ultra, Chrome, portrait, installed to the home screen.
 
 > **The repo name is historical.** It held Captain Run, a viking crowd-runner, through
-> v0.3.0, and was reshaped into this game on 2026-09-07 at Gideon's request. Nothing in the
-> build depends on the name (`base: './'`), so renaming it on GitHub is safe whenever he
-> wants; until then, `Captain_Run` in a URL means Wick.
+> v0.3.0; then Wick, a candle-dipping runner, at v1.0.0; and this from v2.0.0. Nothing in
+> the build depends on the name (`base: './'`), so renaming it on GitHub is safe whenever
+> Gideon wants. Until then, `Captain_Run` in a path or URL means Candle Gift.
 
 **Read `C:\dev\gamedev-notes` first** — `SKILL.md` (process), `PIPELINE.md` (stack, shipping,
 measured limits), `CRAFT.md` (design lessons, several drawn from this repo), `ASSETS.md`,
@@ -22,9 +27,9 @@ measured limits), `CRAFT.md` (design lessons, several drawn from this repo), `AS
 ## Stack
 
 Vite 5 with `base: './'`, three.js pinned to 0.166.0 in its own chunk, `vite-plugin-pwa`
-generating the service worker, TypeScript for the extracted modules, Playwright against the
-production build, node unit tests over the pure layer, a per-chunk bundle size guard, and CI
-that runs all of it before deploying to Pages.
+generating the service worker, TypeScript for the pure layer, Playwright against the
+production build, node unit tests, a per-chunk bundle size guard, and CI that runs all of it
+before deploying to Pages.
 
 ```bash
 npm run dev        # play it locally
@@ -40,106 +45,111 @@ npm run size       # bundle size guard, fails in both directions
 
 | File | What it is |
 |---|---|
-| `index.html` | Shell: all CSS, HUD, workshop screen, appraisal panel, error overlay, SW registration |
-| `src/main.js` | The game: renderer, spawning, simulation, render pass, shop, boot |
-| `src/candle.ts` | **The candle.** Layer stack, and every bit of geometry derived from it |
-| `src/appraise.ts` | What a finished candle is worth, and the grade |
-| `src/tuning.ts` | `T`, waxes, workshops, scents, and the derived stats as pure functions |
+| `index.html` | Shell: all CSS, HUD, workshop screen, results card, error overlay, SW registration |
+| `src/main.js` | The game: renderer, stations, spawning, simulation, shop, boot |
+| `src/stack.ts` | **The trailing tray.** Path history and the row layout that lags behind it |
+| `src/candle.ts` | The recipe — bands, glitter, mould, wrap — and the geometry derived from it |
+| `src/appraise.ts` | What a tray is worth at the gift table, and the star rating |
+| `src/tuning.ts` | `T`, waxes, moulds, wraps, workshops, upgrades, derived stats |
 | `src/util.ts` | `clamp`, `lerp`, `smooth`, `hash`, `fmt`, `makeRng` |
-| `src/save.ts` | The one localStorage key (`wick.v1`), and a defensive loader |
+| `src/save.ts` | The one localStorage key (`candlegift.v1`), and a defensive loader |
 | `src/sfx.ts` | The whole audio graph, synthesised, built on first gesture |
 | `src/gfx.ts` | Toon materials, inverted-hull outlines, the instanced `Layer` |
 | `src/changelog.js` | `VERSION` and the patch notes shown in the workshop |
-| `test/` | `harness.mjs` bundles `pure-entry.ts` with esbuild so node can import TS |
-| `e2e/smoke.spec.ts` | 23 tests against the built game, including the forty-second golden |
+| `e2e/smoke.spec.ts` | 24 tests against the built game, including the thirty-second golden |
 | `NOTES.md` | Design decisions, tuning as shipped, and what to do next |
 
-## The split
+## The two axes
 
-`main.js` is the renderer and the glue; everything that can be decided without a GPU lives in
-a `.ts` module with unit tests. That boundary is the useful one, and `test/pure-entry.ts` is
-its standing check: if importing it ever starts pulling in three.js or the DOM, a module that
-was supposed to be pure has grown a dependency on the game.
+Everything in the game is one of these, and they never interfere:
 
-Imports of the TS modules from `main.js` are **extensionless** (`'./util'`, not `'./util.js'`)
-— Vite only rewrites `.js` to `.ts` for TS importers.
+- **How many candles** — gates add (`+N` / `x2`), obstacles knock them off the back.
+- **What each one is worth** — the stations, which treat the whole tray at once.
+
+That separation is why both stay readable. Obstacles cannot quietly change quality and
+stations cannot quietly change count, so the HUD can show one number for each and the
+results screen can multiply them.
 
 ## Invariants
 
-- **The silhouette is derived from the layer list, never stored beside it.** Radius, height,
-  lean and appraised value are all functions of the same array, so the candle on screen
-  cannot disagree with the candle being scored. In a game whose entire premise is "protect
-  the thing you can see", that is the one bug the player would never forgive.
-- **Nothing that affects game state may use `Math.random`.** Decisions keyed on a place go
-  through `hash(a, b)` seeded on (chunk, workshop); everything else draws from `rnd`, the
-  per-run stream from `makeRng`. Cosmetic jitter — spark scatter, dust motes, camera shake,
-  flame flicker — stays on `Math.random` deliberately. The hard part is that "cosmetic" is
-  not obvious: a droplet's position decides when it comes within magnet reach, which decides
-  how much wax is on the candle when it meets the next blade. **Anything that decides *when*
-  is simulation.**
-- **World +x is screen LEFT.** The camera sits behind the candle looking along `+z`, which is
-  a 180° turn about Y, and that mirrors the x axis — measured, not assumed: world +2 projects
-  to NDC −0.31. So the drag handler subtracts. The previous game on this stack mapped it the
-  obvious way and shipped inverted steering for its whole life, because every test drove
-  `steer()` in world coordinates and nobody ever played it with a thumb. `dragging right
-  moves the candle right` in e2e drives real pointer events for exactly this reason.
+- **The tray trails the leader along its own recorded path.** `stack.ts` keeps a ring buffer
+  of where the leader has been; row *r* sits `r × trailGap` back **along that path**, not
+  behind the leader in a straight line. A long tray therefore has to be steered early,
+  because the back is still going where the front went a second ago — which is the mechanic
+  the reference game is built on and the reason a bigger tray is a trade rather than free.
+  **Obstacles test every candle, not the leader**, or the whole thing is decoration.
+- **The silhouette is derived from the recipe, never stored beside it.** Bands, radius,
+  height and value are all functions of the same object, so the candles on screen cannot
+  disagree with the candles being paid for.
+- **A candle is a layer cake, not an onion.** Dips are *horizontal bands stacked up* the
+  candle, newest on top. Modelled as concentric shells — which is what dipping physically
+  does — the outermost band hides every band inside it and five dips render as a plain
+  cylinder. The HUD chips are drawn in the same order, so the two never need reconciling.
+- **Nothing that affects game state may use `Math.random`.** Place-keyed decisions go through
+  `hash(a, b)` seeded on (chunk, level); everything else draws from `rnd`. Cosmetic jitter —
+  confetti scatter, cloud shapes, camera shake — stays on `Math.random` deliberately. The
+  trap is that "cosmetic" is not obvious: a banknote's position decides when it comes within
+  magnet reach, which decides how much cash is banked before the next barrier. **Anything
+  that decides *when* is simulation.**
+- **World +x is screen LEFT.** The camera sits behind the tray looking along `+z`, which is a
+  180° turn about Y — measured, not assumed: world +2 projects to NDC −0.31. So the drag
+  handler subtracts. The first game on this stack mapped it the obvious way and shipped
+  inverted steering for its whole life, because every test drove `steer()` in world
+  coordinates. `dragging right moves the tray right` in e2e drives real pointer events.
 - **A `PlaneGeometry` faces `+z`, and this camera looks along `+z`.** Any flat thing added to
-  the world shows the player its back: culled by `FrontSide`, and mirrored if you "fix" it
-  with `DoubleSide`. Rotate it `Math.PI` about Y. When something renders as nothing,
-  enumerate what you did *not* configure, not what you did.
+  the world shows the player its back: culled by `FrontSide`, mirrored if you "fix" it with
+  `DoubleSide`. Rotate it `Math.PI` about Y. When something renders as nothing, enumerate
+  what you did *not* configure.
 - **Anything the player must reach or dodge goes through `laneX`**, which places inside
-  `laneClamp` — not across the road mesh, which is deliberately wider. A hazard outside the
-  steerable band is drawn, is in the level, and can never once interact with anyone.
+  `laneClamp` — not across the road mesh, which is deliberately wider.
 - **Any `reset → push → flush` render path will eventually lose its flush and fail silently.**
-  Assert `mesh.count` against the model; `e2e` does.
-- **Use `requestAnimationFrame` to draw, never to undo.** A flash cleared from a rAF callback
-  sticks at full opacity when the tab is hidden. `setTimeout` instead.
-- **`freeze()` before `advance()` in any harness**, or the run has been playing itself for
-  however long the machine took to boot and every recorded number moves with the machine.
+  Assert `mesh.count` against the model; `e2e` does, including that only the *pressed* mould's
+  band layer draws anything.
+- **Use `requestAnimationFrame` to draw, never to undo.**
+- **`freeze()` before `advance()` in any harness**, or every recorded number moves with the
+  machine.
 - **Seeding or clearing the save needs `Storage.prototype.setItem` frozen first**, or the
   outgoing page writes live state back over it on reload.
 
 ## Numbers that are calibrated, not chosen
 
-- **`par: 660`** — measured, not picked. Three scripted runs of workshop 1 through the debug
-  seam: never touching the screen scores 353, dodging blades scores 610, dodging *and*
-  sweeping droplets scores 1046. Those land on PLAIN, GOOD and MASTERWORK. At the first guess
-  of 260, doing nothing graded FINE and both skilled runs hit the ceiling. **Re-measure this
-  whenever wax income moves.**
-- **`laneClamp: 2.5` against `bladeR: 0.45`.** A blade plus a grown candle sweeps ~1.1 units.
-  At the first numbers (1.5 band, 0.62 disc) that was 1.29 of 1.5, so steering was decoration:
-  an unsteered run lost 64 wax and a perfectly steered one could not do much better. The band
-  must stay well wider than `bladeR + a fat candle`.
-- **`magnetBase: 1.2`.** Carried over at 3.4 it exceeded half the road, so a run that never
-  touched the screen collected every droplet and appraised MASTERWORK. Must stay well under
-  `laneClamp` or droplets stop being a reason to steer.
-- **Wax prices span under 2×.** At 2.9× for gold leaf, material value dominated and the dip
-  arch collapsed into "take the bigger number" — a warm three-colour candle beat a
-  contrasting one of the same size on raw wax alone.
-- **Contrast counts lightness, not only hue.** Cream tallow and crimson are 0.13 apart on the
-  wheel and are obviously two colours. The unit tests caught the hue-only model before any of
-  it was drawn.
-- **Ambient 0.42 → 0.15 across the four workshops**, floored at 0.12 by `ambientFor`. Below
-  that the four-step toon `gradientMap` collapses into flat black. The flame is a real
-  `PointLight` whose intensity tracks the candle's radius, so a bad run is also a dark one.
-- **Draw calls 32–43.** Everything is instanced per kind, so candle size does not move this.
+- **`par: 9100` and `STAR_AT = [0.30, 0.60, 1.15]`** — measured, not picked. Four scripted
+  runs of level 1 with no upgrades: never steering scores 4,485; dodging 7,935; dodging plus
+  choosing station halves 8,880; dodging plus sweeping banknotes 10,575. Those land on
+  **1 / 2 / 2 / 3 stars**, so three stars needs both good dodging and the money.
+  **Re-measure whenever obstacle damage, gate rates or the craft multipliers move.**
+- **`barrierTake: 5, rollerTake: 3, sawTake: 6`.** At 3/2/4 a run that never touched the
+  screen finished with fourteen candles and three stars: gates hand out more growth over a
+  level than soft obstacles can claw back, and the whole spread between idling and playing
+  well was 1.3×.
+- **Stations are two halves, never full width.** Full-width gantries gave every tray every
+  treatment regardless of input — per-candle value came out *identical* across every play
+  style. The halves are the only place skill touches quality.
+- **`bestMould`/`bestWrap` floor at 1.** At 0 the level-1 press stamped PLAIN onto plain
+  candles and printed "ALREADY PLAIN" — a station with a gantry and a sign that did nothing
+  until an upgrade several levels later.
+- **Road dark, sky light, always.** Workshop 2 shipped as a pink runway under a pink sky and
+  the track dissolved into the backdrop at about twenty units, which is the distance you
+  steer by. A unit test asserts ≥0.25 lightness between every road and its sky.
+- **Candles are ~4:1 tall and the camera is low.** The bands are horizontal, so they are only
+  legible from the side; a high camera sees the tops and a three-colour tray reads as one
+  colour.
+- **Draw calls 45–65.** Everything on the runway is instanced; the stations are the expensive
+  part (three pooled gantries of nine meshes each). The e2e budget is 80.
 
 ## Testing
 
 `npm run e2e` is the safety net; run it before and after anything structural. The golden
-records the whole simulation after forty simulated seconds. If a deliberate balance change
-moves those numbers, **read the diff**, re-record in the same commit, and say so in the
-message. A rendering, layout or build change must not touch them — the viewport and control
-fixes on 2026-09-07 left the golden byte-identical, which is the proof that seam works.
+records the whole simulation after **thirty** simulated seconds — inside a level, since a
+level is about thirty-seven seconds of runway. If a deliberate balance change moves those
+numbers, **read the diff**, re-record in the same commit, and say so in the message.
 
 **Playwright runs on port 4179, not vite's default 4173.** Several games are built on this
 machine at once and every one of them copied the same port; two suites then fight, and the
-failures do not look like a port conflict. Coreward's tests taking 4173 produced a run of
-`ERR_CONNECTION_REFUSED` here that read exactly like boot bugs.
+failures do not look like a port conflict.
 
 **The test viewport must come after the device spread.** `devices['Desktop Chrome']` carries
-its own 1280×720, which silently overrode the portrait size — so for a while the smoke tests
-framed a landscape picture this portrait-only game never renders.
+its own 1280×720, which silently overrode the portrait size.
 
 ## Record as you go
 

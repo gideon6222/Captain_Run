@@ -8,9 +8,22 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '1.0.0';
+export const VERSION = '2.0.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.0.0', date: '2026-09-07', title: 'Candle Gift',
+    notes: [
+      'The whole game is a candle factory now. Run a tray of candles down the line and sell them at the end.',
+      'Your candles trail behind you in a line - the longer the stack, the earlier you have to start steering.',
+      'Stations do the work: CANDLE vats dip a coloured band, GLITTER sprinkles, MOLD presses a shape, WRAP ties the bow.',
+      'Gates add candles, +N or x2. Barriers, spike rollers and saws knock them off the back.',
+      'Grab the banknotes on the runway - some of them are guarded.',
+      'Every candle is lit one at a time on the gift table while the money counts up. Three stars a level.',
+      'Bright purple runway in an open sky, hot pink signage, and a lot of confetti.',
+      'Upgrades are stats you buy between levels: Bigger Batch, Earning Power, Steady Tray, and the stations themselves.'
+    ]
+  },
   {
     version: '1.0.0', date: '2026-09-07', title: 'Wick',
     notes: [

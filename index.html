@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#3b2340">
+<meta name="theme-color" content="#3aa8ee">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Wick</title>
+<title>Candle Gift</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- The error overlay handler must come BEFORE the entry script.
@@ -35,195 +35,184 @@
 </script>
 
 <style>
+  /* Candy, not craft. Hot pink signage, white chunky panels with a dark
+     outline, green money. The reference is relentlessly bright and the UI has
+     to match it or the HUD reads as a different game sitting on top. */
   :root{
-    --ink:#fff4dc; --dim:#a4886a; --gold:#ffc93c; --flame:#ffb861; --cool:#8fd3ff;
-    --red:#ff4d5e; --green:#5ce07a;
-    --wood:#3a2418; --wood2:#241408; --edge:#150a04;
+    --ink:#3a1548; --paper:#fffdf8; --pink:#e8226e; --pinkDark:#8e0b40;
+    --mint:#3fce6a; --gold:#ffc93c; --sky:#3aa8ee; --grape:#7b3fd4;
+    --edge:#2b0f36;
     --safe-t: env(safe-area-inset-top, 0px);
     --safe-b: env(safe-area-inset-bottom, 0px);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{
-    margin:0; padding:0; height:100%; overflow:hidden; background:#1a1024; color:var(--ink);
+    margin:0; padding:0; height:100%; overflow:hidden; background:#3aa8ee; color:var(--ink);
     font-family:"Segoe UI",system-ui,-apple-system,sans-serif; font-weight:800;
     user-select:none; -webkit-user-select:none; touch-action:none; overscroll-behavior:none;
   }
   #game{position:fixed; inset:0;}
   canvas{display:block;}
 
-  .out{ text-shadow: 0 2px 0 var(--edge), 0 -2px 0 var(--edge), 2px 0 0 var(--edge), -2px 0 0 var(--edge), 0 4px 6px rgba(0,0,0,.6); }
+  .out{ text-shadow: 0 2px 0 var(--edge), 0 -2px 0 var(--edge), 2px 0 0 var(--edge), -2px 0 0 var(--edge), 0 4px 8px rgba(0,0,0,.45); color:#fff; }
 
   #hud{position:fixed; inset:0; pointer-events:none; padding:calc(var(--safe-t) + 8px) 10px 0;}
-
   .toprow{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+
+  /* Chunky white pills with a dark outline, like the reference signage. */
   .panel{
-    background:linear-gradient(#4a2f1e,#2b1809);
-    border:3px solid var(--edge); border-radius:12px;
-    box-shadow:0 4px 0 var(--edge), inset 0 2px 0 rgba(255,255,255,.13);
-    padding:5px 9px;
+    background:var(--paper); border:3px solid var(--edge); border-radius:14px;
+    box-shadow:0 4px 0 var(--edge); padding:5px 11px; color:var(--ink);
   }
-  #level{font-size:15px; letter-spacing:.05em; line-height:1.05;}
-  #level small{display:block; font-size:9px; color:var(--dim); letter-spacing:.14em; font-weight:800;}
+  #level{font-size:16px; letter-spacing:.04em; line-height:1.05; text-align:center;}
+  #level small{display:block; font-size:8.5px; color:#9a6ab0; letter-spacing:.16em;}
 
-  #res{display:flex; gap:11px; align-items:center;}
-  .r{display:flex; align-items:center; gap:5px; font-size:14px;}
-  .pip{width:15px; height:15px; border:2px solid var(--edge); border-radius:4px; flex:none;}
-  .pip.g{background:linear-gradient(#ffe07a,#f0a01a); border-radius:50%;}
-  .pip.w{background:linear-gradient(#fff2d0,#d8b478);}
-
-  /* Progress to the bench, and the wick clock under it. Two bars, because they
-     answer different questions: how far, and how long. */
-  #bars{margin:9px auto 0; width:min(94%,380px);}
-  #prog, #wick{
-    position:relative; height:15px; border:3px solid var(--edge); border-radius:9px;
-    background:#20140a; overflow:hidden; box-shadow:0 3px 0 var(--edge);
+  .money{
+    background:linear-gradient(#4fe07d,#25a854); border:3px solid var(--edge); border-radius:14px;
+    box-shadow:0 4px 0 var(--edge); padding:5px 12px; font-size:16px; color:#fff;
   }
-  #wick{height:13px; margin-top:5px;}
-  #prog i,#wick i{position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(#ffe6a8,#e0a040);}
-  #prog i{background:linear-gradient(#a8e0ff,#3f8fd0);}
-  #prog b,#wick b{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:9px; letter-spacing:.12em;}
 
-  /* wax + grade, left */
-  #waxBox{position:fixed; left:12px; top:calc(var(--safe-t) + 112px); text-align:center;}
-  #waxN{font-size:34px; line-height:.95; color:#fff;}
-  #waxBox small{font-size:9px; letter-spacing:.16em; color:var(--dim); display:block;}
-  #gradeN{font-size:13px; letter-spacing:.09em; color:var(--gold); margin-top:5px;}
+  #bars{margin:9px auto 0; width:min(94%,400px);}
+  #prog{
+    position:relative; height:13px; border:3px solid var(--edge); border-radius:9px;
+    background:rgba(255,255,255,.55); overflow:hidden; box-shadow:0 3px 0 var(--edge);
+  }
+  #prog i{position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(#ff8ec0,#e8226e);}
 
-  /* the layer stack, mirroring the candle. Newest on top, exactly as the
-     candle is banded, so the two never have to be reconciled by the player. */
-  #stackBox{position:fixed; right:12px; top:calc(var(--safe-t) + 108px); width:56px; text-align:center;}
-  #stackBox small{font-size:8.5px; letter-spacing:.14em; color:var(--dim); display:block; margin-bottom:4px;}
+  /* candle count, left — the thing obstacles take */
+  #countBox{position:fixed; left:12px; top:calc(var(--safe-t) + 108px); text-align:center;}
+  #countN{font-size:40px; line-height:.95;}
+  #countBox small{font-size:9px; letter-spacing:.16em; display:block; color:#fff; text-shadow:0 2px 0 var(--edge);}
+
+  /* per-candle value + cash, right */
+  #valBox{position:fixed; right:12px; top:calc(var(--safe-t) + 104px); text-align:right;}
+  #valBox .lbl{font-size:8.5px; letter-spacing:.14em; color:#fff; text-shadow:0 1px 0 var(--edge);}
+  #eachN{font-size:22px; line-height:1.05;}
+  #cashN{font-size:15px; line-height:1.4; color:#b6ffcf;}
+
+  /* the band stack, mirroring the candles */
+  #stackBox{position:fixed; right:12px; top:calc(var(--safe-t) + 186px); width:44px; text-align:center;}
+  #stackBox small{font-size:8px; letter-spacing:.12em; color:#fff; text-shadow:0 1px 0 var(--edge); display:block; margin-bottom:4px;}
   #stack{display:flex; flex-direction:column; align-items:center; gap:2px;}
-  #stack i{display:block; width:34px; border:2px solid var(--edge); border-radius:3px;}
+  #stack i{display:block; width:30px; height:9px; border:2px solid var(--edge); border-radius:3px;}
 
   #toast{
-    position:fixed; left:0; right:0; top:31%; text-align:center; font-size:25px;
-    opacity:0; transition:opacity .25s; color:var(--flame);
+    position:fixed; left:0; right:0; top:29%; text-align:center; font-size:26px;
+    opacity:0; transition:opacity .25s; letter-spacing:.05em;
   }
   #hint{
     position:fixed; left:0; right:0; bottom:calc(var(--safe-b) + 26px); text-align:center;
-    font-size:13px; color:#ffeccf; opacity:.95; transition:opacity .6s; letter-spacing:.06em;
+    font-size:13px; opacity:.95; transition:opacity .6s; letter-spacing:.06em;
   }
-
   #pops{position:fixed; inset:0; pointer-events:none; overflow:hidden;}
-  .pop{position:absolute; font-size:17px; will-change:transform,opacity; white-space:nowrap;}
+  .pop{position:absolute; font-size:18px; will-change:transform,opacity; white-space:nowrap;}
 
   /* the workshop */
   .modal{position:fixed; inset:0; z-index:20; display:flex; align-items:flex-end; justify-content:center;
-    background:rgba(10,6,14,.8); backdrop-filter:blur(3px); padding:0;}
+    background:rgba(40,12,60,.62); backdrop-filter:blur(3px);}
   .modal.hidden{display:none;}
   .sheet{
-    width:100%; max-width:520px; max-height:94vh; overflow:auto; padding:16px 14px calc(var(--safe-b) + 16px);
-    background:linear-gradient(#3f2818,#1c100a);
-    border:4px solid var(--edge); border-bottom:none; border-radius:20px 20px 0 0;
-    box-shadow:0 -8px 30px rgba(0,0,0,.6);
+    width:100%; max-width:520px; max-height:94vh; overflow:auto;
+    padding:16px 14px calc(var(--safe-b) + 16px);
+    background:linear-gradient(#fffdf8,#f4e8ff);
+    border:4px solid var(--edge); border-bottom:none; border-radius:22px 22px 0 0;
+    box-shadow:0 -8px 30px rgba(40,12,60,.5);
   }
   .sheet::-webkit-scrollbar{display:none;}
   .shead{position:sticky; top:-16px; margin:-16px -14px 10px; padding:14px 14px 10px;
-    background:linear-gradient(#4a2f1e,#301c0e); border-bottom:3px solid var(--edge); z-index:2;}
-  .shead h2{margin:0; font-size:20px; letter-spacing:.06em;}
-  .shead .sub{font-size:11px; color:var(--dim); letter-spacing:.1em; margin-top:2px;}
-  .shead .bal{display:flex; gap:14px; margin-top:8px; font-size:14px;}
-  .shead .bal span{display:flex; align-items:center; gap:5px;}
-  .shead .bal em{font-style:normal; color:var(--dim); font-size:10px; letter-spacing:.1em;}
+    background:linear-gradient(#e8226e,#b3104f); border-bottom:4px solid var(--edge); z-index:2; color:#fff;}
+  .shead h2{margin:0; font-size:21px; letter-spacing:.05em;}
+  .shead .sub{font-size:11px; letter-spacing:.1em; margin-top:2px; color:#ffd8e8;}
+  .shead .bal{display:flex; gap:14px; margin-top:9px; font-size:15px; align-items:center;}
+  .shead .bal em{font-style:normal; color:#ffd8e8; font-size:10px; letter-spacing:.1em;}
 
-  /* the appraisal */
-  #appraisal{
-    margin:2px 0 14px; padding:12px; border:3px solid var(--edge); border-radius:14px;
-    background:linear-gradient(#2a1a10,#150c07); box-shadow:inset 0 2px 0 rgba(255,255,255,.08);
+  /* the result card */
+  #result{
+    margin:2px 0 14px; padding:12px; border:4px solid var(--edge); border-radius:16px;
+    background:linear-gradient(#fff8fc,#ffe9f4); box-shadow:0 4px 0 var(--edge);
   }
-  #appraisal.hidden{display:none;}
-  .apgrade{text-align:center; font-size:27px; letter-spacing:.1em; margin-bottom:9px; color:var(--gold);}
-  .apgrade.gM{color:#b9f0ff;} .apgrade.gF{color:#ffd66a;} .apgrade.gG{color:#a6e88a;}
-  .apgrade.gP{color:#e0c9a0;} .apgrade.gR{color:#d09a70;} .apgrade.gS{color:#9a8574;}
-  .aprow{display:flex; align-items:baseline; gap:8px; padding:4px 0; font-size:12px;
-    border-top:1px solid rgba(255,244,220,.10);}
-  .aprow:first-child{border-top:none;}
-  .apk{width:78px; flex:none; color:#e0a95c; letter-spacing:.11em; font-size:10.5px;}
-  .apd{flex:1; color:var(--dim); font-weight:700;}
-  .apv{color:var(--ink); font-size:13px;}
-  .aptot{display:flex; justify-content:space-between; align-items:center; margin-top:9px; padding-top:9px;
-    border-top:2px solid rgba(255,244,220,.2); font-size:16px;}
-  .aptot span{font-size:10.5px; letter-spacing:.14em; color:#e0a95c;}
-  .aptot b{font-size:23px; color:var(--gold);}
+  #result.hidden{display:none;}
+  #rStars{text-align:center; margin-bottom:8px;}
+  #rStars i{font-style:normal; font-size:34px; color:#dcc9e8; margin:0 3px;
+    text-shadow:0 2px 0 rgba(0,0,0,.15);}
+  #rStars i.on{color:var(--gold); text-shadow:0 2px 0 #a06a00;}
+  .rrow{display:flex; align-items:baseline; gap:8px; padding:4px 0; font-size:12px;
+    border-top:1px solid rgba(60,20,80,.12);}
+  .rrow:first-child{border-top:none;}
+  .rk{width:78px; flex:none; color:var(--pink); letter-spacing:.1em; font-size:10.5px;}
+  .rd{flex:1; color:#7a5a8c; font-weight:700;}
+  .rv{color:var(--ink); font-size:13px;}
+  .rtot{display:flex; justify-content:space-between; align-items:center; margin-top:9px; padding-top:9px;
+    border-top:3px solid rgba(60,20,80,.2);}
+  .rtot span{font-size:10.5px; letter-spacing:.14em; color:var(--pink);}
+  .rtot b{font-size:26px; color:#1c9e4c;}
 
   .counter{margin-top:12px;}
   .counter h3{
-    margin:0 0 6px; font-size:11px; letter-spacing:.2em; color:#e0a95c;
-    border-bottom:2px solid #59371f; padding-bottom:4px;
+    margin:0 0 6px; font-size:11px; letter-spacing:.2em; color:var(--pink);
+    border-bottom:3px solid #f6d6e6; padding-bottom:4px;
   }
   .up{display:flex; align-items:center; gap:9px; padding:7px 0;}
-  .upic{width:34px; height:34px; flex:none; border:3px solid var(--edge); border-radius:9px;
-    display:flex; align-items:center; justify-content:center; font-size:17px; background:#59371f;}
+  .upic{width:36px; height:36px; flex:none; border:3px solid var(--edge); border-radius:11px;
+    display:flex; align-items:center; justify-content:center; font-size:17px; background:#ffe3f0;}
   .upinfo{flex:1; min-width:0;}
-  .upname{font-size:13.5px;}
-  .upeff{font-size:10.5px; color:#c0a184; margin-top:2px; font-weight:700;}
+  .upname{font-size:13.5px; color:#fff;}
+  .upeff{font-size:10.5px; color:#7a5a8c; margin-top:2px; font-weight:700;}
   .buy{
-    border:3px solid var(--edge); border-radius:10px; padding:9px 11px; font-size:12px; font-weight:800;
-    background:linear-gradient(#63d47f,#2e8f48); color:#08240f; box-shadow:0 4px 0 var(--edge);
-    white-space:nowrap; min-width:78px; font-family:inherit;
+    border:3px solid var(--edge); border-radius:12px; padding:9px 12px; font-size:13px; font-weight:800;
+    background:linear-gradient(#4fe07d,#25a854); color:#06331a; box-shadow:0 4px 0 var(--edge);
+    white-space:nowrap; min-width:76px; font-family:inherit;
   }
   .buy:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
-  .buy.no{background:linear-gradient(#6a5a4a,#40342a); color:#9c8a76;}
-  .buy.max{background:linear-gradient(#e0b64a,#a07a1a); color:#3a2600;}
-  .up.locked{opacity:.62;}
-  .up.locked .upic{background:#2b1c11;}
-  .lockmsg{font-size:11px; color:#e08a5c; font-weight:700;}
-
-  /* the scent shelf */
-  .scent{display:flex; align-items:center; gap:9px; padding:6px 0;}
-  .sic{width:30px; height:30px; flex:none; border:3px solid var(--edge); border-radius:8px;
-    display:flex; align-items:center; justify-content:center; font-size:15px; background:#4a2f1e;}
-  .sname{font-size:12px;}
-  .seff{font-size:10px; color:#c0a184; margin-top:1px; font-weight:700;}
-  .scent.miss{opacity:.5;}
-  .scent.miss .sic{background:#241609; color:#7a5e42;}
+  .buy.no{background:linear-gradient(#d8cfe0,#a898b8); color:#5f4a70;}
+  .buy.max{background:linear-gradient(#ffd96a,#e0a010); color:#4a2f00;}
+  .up.locked{opacity:.6;}
+  .up.locked .upic{background:#e6dcee;}
+  .lockmsg{font-size:11px; color:var(--pink); font-weight:800;}
 
   .go{
-    width:100%; margin-top:16px; border:4px solid var(--edge); border-radius:14px; padding:15px;
-    font-size:16px; letter-spacing:.12em; font-weight:800; font-family:inherit;
-    background:linear-gradient(#ffc93c,#e07a10); color:#3a1e00; box-shadow:0 6px 0 var(--edge);
+    width:100%; margin-top:16px; border:4px solid var(--edge); border-radius:16px; padding:16px;
+    font-size:17px; letter-spacing:.12em; font-weight:800; font-family:inherit;
+    background:linear-gradient(#ff7ab0,#e8226e); color:#fff; box-shadow:0 6px 0 var(--edge);
+    text-shadow:0 2px 0 rgba(0,0,0,.25);
   }
   .go:active{transform:translateY(4px); box-shadow:0 2px 0 var(--edge);}
 
-  /* Version, patch notes and build stamp, at the bottom of the workshop.
+  /* Version, patch notes and build stamp.
 
-     The stamp is how a deploy is verified on the phone: an installed PWA can
-     be a load behind, and the game looks identical between builds, so there is
+     The stamp is how a deploy is verified on the phone: an installed PWA can be
+     a load behind, and the game looks identical between builds, so there is
      otherwise nothing to check. The version and notes answer the different
      question of what actually changed. */
   .verline{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
-    margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,244,220,.14);
-    font-size:12.5px; font-weight:700; letter-spacing:.1em; color:var(--flame);
+    margin-top:14px; padding-top:12px; border-top:2px solid rgba(60,20,80,.15);
+    font-size:12.5px; font-weight:800; letter-spacing:.1em; color:var(--pink);
   }
   .notesbtn{
-    border:1px solid rgba(255,184,97,.4); background:rgba(255,184,97,.1); color:var(--flame);
-    border-radius:9px; padding:7px 11px; font-size:10.5px; font-weight:700; letter-spacing:.09em;
+    border:2px solid var(--pink); background:#ffe3f0; color:var(--pink);
+    border-radius:10px; padding:7px 11px; font-size:10.5px; font-weight:800; letter-spacing:.09em;
   }
   .notes{max-height:210px; overflow-y:auto; margin-top:10px;}
   .notes.hidden{display:none;}
-  .rel{padding:9px 0; border-top:1px solid rgba(255,244,220,.12);}
+  .rel{padding:9px 0; border-top:1px solid rgba(60,20,80,.12);}
   .rel:first-child{border-top:none;}
-  .relhead{font-size:11.5px; font-weight:700; letter-spacing:.06em; color:var(--ink);}
-  .relhead .v{color:var(--gold);}
-  .relhead .d{color:var(--dim); font-weight:500;}
-  .rel ul{margin:5px 0 0; padding-left:15px; color:var(--dim); font-size:11px; line-height:1.6;}
+  .relhead{font-size:11.5px; font-weight:800; color:var(--ink);}
+  .relhead .v{color:var(--pink);}
+  .relhead .d{color:#9a7aa8; font-weight:600;}
+  .rel ul{margin:5px 0 0; padding-left:15px; color:#6a4a7c; font-size:11px; line-height:1.6; font-weight:600;}
   .stamp{
-    margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,244,220,.12);
+    margin-top:12px; padding-top:10px; border-top:1px solid rgba(60,20,80,.12);
     font:10.5px/1.5 ui-monospace,"Cascadia Mono",Consolas,monospace;
-    color:var(--dim); letter-spacing:.02em; text-align:center;
+    color:#9a7aa8; text-align:center;
   }
 
   #flash{position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .25s; z-index:30;}
   #vig{position:fixed; inset:0; pointer-events:none; opacity:0; z-index:29;
-    box-shadow:inset 0 0 55px 2px rgba(210,25,45,.95); transition:opacity .2s;}
-  /* Snuffed. Slow in, fast out: arriving in the dark should feel like
-     something closing, and relighting should feel instant. */
-  #dark{position:fixed; inset:0; pointer-events:none; opacity:0; z-index:28; background:#050208;
-    transition:opacity .5s ease-in;}
-  #boot{position:fixed; inset:0; z-index:40; background:#1a1024; display:flex; align-items:center;
-    justify-content:center; flex-direction:column; gap:8px; color:var(--flame); font-size:26px; letter-spacing:.3em;}
+    box-shadow:inset 0 0 55px 4px rgba(232,50,76,.9); transition:opacity .2s;}
+  #boot{position:fixed; inset:0; z-index:40; background:linear-gradient(#3aa8ee,#bfeaff);
+    display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px;
+    font-size:27px; letter-spacing:.22em;}
   #boot.hidden{display:none;}
   #err{position:fixed; inset:0; z-index:99; background:#180508; color:#ffb0b8; padding:20px;
     font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow:auto; font-weight:400;}
@@ -237,24 +226,24 @@
 
 <div id="hud">
   <div class="toprow">
-    <div class="panel out" id="level">1<small>WORKSHOP</small></div>
-    <div class="panel" id="res">
-      <div class="r out"><span class="pip g"></span><span id="coins">0</span></div>
-    </div>
+    <div class="panel" id="level">1<small>LEVEL</small></div>
+    <div class="money out" id="coinsWrap">$<span id="coins">0</span></div>
   </div>
-  <div id="bars">
-    <div id="prog"><i></i><b class="out">TO THE BENCH</b></div>
-    <div id="wick"><i></i><b class="out">WICK</b></div>
-  </div>
+  <div id="bars"><div id="prog"><i></i></div></div>
 </div>
 
-<div id="waxBox" class="out">
-  <div id="waxN">7</div><small>WAX</small>
-  <div id="gradeN">STUB</div>
+<div id="countBox" class="out">
+  <div id="countN">4</div><small>CANDLES</small>
 </div>
 
-<div id="stackBox" class="out">
-  <small>LAYERS</small>
+<div id="valBox">
+  <div class="lbl">EACH</div>
+  <div id="eachN" class="out">$0</div>
+  <div id="cashN" class="out">$0</div>
+</div>
+
+<div id="stackBox">
+  <small>BANDS</small>
   <div id="stack"></div>
 </div>
 
@@ -265,26 +254,24 @@
 <div id="shopScreen" class="modal hidden">
   <div class="sheet">
     <div class="shead">
-      <h2 class="out" id="shopTitle">THE CHANDLERY</h2>
-      <div class="sub" id="shopSub">THE BENCH IS QUIET</div>
+      <h2 class="out" id="shopTitle">THE WORKSHOP</h2>
+      <div class="sub" id="shopSub">READY TO RUN</div>
       <div class="bal out">
-        <span><i class="pip g"></i> <b id="sCoins">0</b></span>
-        <span><em>BEST</em> <b id="sBest">0</b></span>
-        <span><em>SCENTS</em> <b id="scentCount">0/6</b></span>
+        <span>$<b id="sCoins">0</b></span>
+        <span><em>BEST</em> $<b id="sBest">0</b></span>
+        <span><em>★</em> <b id="sStars">0</b></span>
       </div>
     </div>
 
-    <div id="appraisal" class="hidden">
-      <div class="apgrade out" id="apGrade">STUB</div>
-      <div id="apRows"></div>
-      <div class="aptot out"><span>PAID</span><b id="apTotal">0</b></div>
+    <div id="result" class="hidden">
+      <div id="rStars"></div>
+      <div id="rRows"></div>
+      <div class="rtot"><span>PAID</span><b id="rTotal">$0</b></div>
     </div>
 
     <div id="shop"></div>
 
-    <div class="counter"><h3>THE SCENT SHELF</h3><div id="scents"></div></div>
-
-    <button class="go out" id="btnGo">START DIPPING</button>
+    <button class="go" id="btnGo">START THE LINE</button>
     <div class="verline">
       <span id="verNum">v0.0.0</span>
       <button id="btnNotes" class="notesbtn">WHAT&apos;S NEW</button>
@@ -294,10 +281,9 @@
   </div>
 </div>
 
-<div id="dark"></div>
 <div id="vig"></div>
 <div id="flash"></div>
-<div id="boot" class="out">WICK</div>
+<div id="boot" class="out">CANDLE GIFT</div>
 <div id="err" class="hidden"></div>
 
 <script type="module" src="/src/main.js"></script>

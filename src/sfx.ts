@@ -10,29 +10,33 @@
    short attack on a synthesised note is a beep, and beeps were the one thing
    Gideon named as bad in the Coreward playtest.
 
-   It drops an octave while the wick is out - same theme, same tempo, so being
-   snuffed reads as the music going under water rather than as a different
-   track starting. That is the same hook the previous game used for its boss
-   phase, pointed at the one moment in this one where the player has lost
-   something and needs telling without a caption. */
+   It drops an octave when the tray is nearly empty - same theme, same tempo,
+   so a run falling apart reads as the music going under water rather than as a
+   different track starting.
+
+   That hook has been repointed twice now, and the reason is worth keeping: it
+   has to aim at a condition that actually occurs. Left pointing at a state the
+   current game no longer has, it becomes an octave drop that can never fire -
+   no error, nothing missing, the game simply plays differently than it reads,
+   which is the one failure mode playtesting cannot see. */
 
 export interface SfxHooks {
-  /* Read live, not passed once: the flame goes out mid-run. */
-  isDark: () => boolean;
+  /* Read live, not passed once: a tray empties mid-run. */
+  isStruggling: () => boolean;
 }
 
 export interface Sfx {
   init(): void;
-  dip(): void;         // through a wax arch
-  drip(): void;        // a droplet collected
-  scrape(): void;      // a blade takes wax
-  sizzle(): void;      // melting under a heat lamp
-  douse(): void;       // water snuffs the wick
-  relight(): void;
-  scent(): void;       // a flask found
+  dip(): void;          // through a wax curtain
+  sparkle(): void;      // the glitter station
+  press(): void;        // the mould stamps
+  wrap(): void;         // the ribbon station
+  gate(): void;         // candles added
+  smash(): void;        // an obstacle takes candles
+  coin(): void;         // a banknote
   sell(good: boolean): void;
-  coin(): void;
-  bench(): void;       // arriving at the chandler
+  buy(): void;
+  deny(): void;
 }
 
 export function createSfx(hooks: SfxHooks): Sfx {
@@ -116,7 +120,7 @@ export function createSfx(hooks: SfxHooks): Sfx {
       // horn theme, one note every 2 beats
       if (s % 4 === 0) {
         const idx = Math.floor(step / 4) % 8;
-        const semi = THEME[idx] + (hooks.isDark() ? -12 : 0);
+        const semi = THEME[idx] + (hooks.isStruggling() ? -12 : 0);
         const f = 146.83 * Math.pow(2, semi / 12);
         horn(t, f);
       }
@@ -154,45 +158,36 @@ export function createSfx(hooks: SfxHooks): Sfx {
   return {
     init,
     /* A soft wet thud with a rising tail: wax closing over wax. Pitch and
-       filter are jittered on everything repeatable, or the fourth droplet in a
-       second turns the game into a machine. */
+       filter are jittered on everything repeatable, or the fourth station in a
+       row turns the game into a machine. */
     dip() {
-      noise(0.26, 380 + Math.random() * 120, 1.1, 0.2, 'lowpass');
-      setTimeout(() => tone(196 * (0.98 + Math.random() * 0.06), 0.34, 'triangle', 0.09, 0.02), 40);
+      noise(0.28, 360 + Math.random() * 140, 1.1, 0.22, 'lowpass');
+      setTimeout(() => tone(196 * (0.97 + Math.random() * 0.07), 0.36, 'triangle', 0.1, 0.02), 40);
     },
-    drip() {
-      if (!ac) return;
-      const now = ac.currentTime;
-      if (now - lastPing < 0.05) return;   // droplets arrive in clusters
-      lastPing = now;
-      tone(660 * (0.86 + Math.random() * 0.5), 0.09, 'triangle', 0.042);
+    /* Glitter is the most "satisfying" moment in the reference, so it gets the
+       brightest sound in the game: a fast shimmer up a major triad over noise,
+       not a single chime. */
+    sparkle() {
+      noise(0.5, 6200, 0.9, 0.05, 'highpass');
+      [1319, 1661, 1976, 2637].forEach((f, i) =>
+        setTimeout(() => tone(f * (0.99 + Math.random() * 0.02), 0.24, 'triangle', 0.05, 0.006), i * 55));
     },
-    scrape() {
-      noise(0.19, 2300 + Math.random() * 900, 3.5, 0.14, 'bandpass');
-      tone(150 + Math.random() * 60, 0.16, 'sawtooth', 0.07);
+    /* A press is machinery: a pneumatic hiss, then a low stamp you feel. */
+    press() {
+      noise(0.14, 2600, 1.4, 0.11, 'highpass');
+      setTimeout(() => { noise(0.3, 150, 0.8, 0.3, 'lowpass'); tone(72, 0.34, 'sine', 0.2); }, 90);
     },
-    /* Deliberately quiet and continuous-sounding. Heat is a place you may
-       choose to stand in, so its sound has to be bearable for a second or two
-       rather than an alarm. */
-    sizzle() {
-      if (!ac) return;
-      const now = ac.currentTime;
-      if (now - lastPing < 0.12) return;
-      lastPing = now;
-      noise(0.2, 5200 + Math.random() * 1800, 1.6, 0.035, 'highpass');
+    wrap() {
+      noise(0.22, 3400 + Math.random() * 700, 2.4, 0.09, 'bandpass');
+      setTimeout(() => { tone(523, 0.3, 'triangle', 0.09, 0.015); tone(698, 0.3, 'triangle', 0.07, 0.015); }, 70);
     },
-    douse() {
-      noise(0.5, 900, 0.8, 0.26, 'lowpass');
-      setTimeout(() => tone(120, 0.42, 'sine', 0.1, 0.005), 30);
+    gate() {
+      tone(523, 0.12, 'triangle', 0.1);
+      setTimeout(() => tone(784, 0.18, 'triangle', 0.09), 70);
     },
-    relight() {
-      noise(0.22, 1600, 1.0, 0.13, 'bandpass');
-      setTimeout(() => { tone(523, 0.3, 'triangle', 0.09, 0.02); tone(784, 0.3, 'triangle', 0.07, 0.02); }, 50);
-    },
-    scent() {
-      tone(659, 0.22, 'triangle', 0.1, 0.01);
-      setTimeout(() => tone(988, 0.34, 'triangle', 0.09, 0.01), 90);
-      setTimeout(() => tone(1319, 0.5, 'triangle', 0.06, 0.02), 190);
+    smash() {
+      noise(0.3, 900 + Math.random() * 400, 1.1, 0.26, 'bandpass');
+      tone(120 + Math.random() * 50, 0.2, 'sawtooth', 0.1);
     },
     sell(good: boolean) {
       if (good) {
@@ -209,6 +204,10 @@ export function createSfx(hooks: SfxHooks): Sfx {
       lastPing = now;
       tone(1046 * (0.94 + Math.random() * 0.14), 0.07, 'triangle', 0.04);
     },
-    bench() { if (!ac) return; horn(ac.currentTime, 98); },
+    buy() {
+      tone(659, 0.14, 'triangle', 0.09);
+      setTimeout(() => tone(988, 0.22, 'triangle', 0.08), 70);
+    },
+    deny() { tone(160, 0.22, 'sawtooth', 0.09, 0.005); },
   };
 }

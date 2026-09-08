@@ -1,5 +1,5 @@
 {
-  "name": "wick",
+  "name": "candle-gift",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test test/util.test.mjs test/tuning.test.mjs test/candle.test.mjs test/appraise.test.mjs",
+    "test": "node --test test/util.test.mjs test/tuning.test.mjs test/candle.test.mjs test/stack.test.mjs test/appraise.test.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json",
     "e2e": "playwright test",
     "size": "node scripts/check-bundle-size.mjs",
