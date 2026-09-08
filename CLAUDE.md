@@ -61,10 +61,11 @@ npm run size       # bundle size guard, fails in both directions
 | `src/tuning.ts` | `T`, waxes, moulds, wraps, workshops, upgrades, derived stats |
 | `src/util.ts` | `clamp`, `lerp`, `smooth`, `hash`, `fmt`, `makeRng` |
 | `src/save.ts` | The one localStorage key (`candlegift.v1`), and a defensive loader |
+| `src/settings.ts` | Sound, music and steering sensitivity, on their **own** key |
 | `src/sfx.ts` | The whole audio graph, synthesised, built on first gesture |
 | `src/gfx.ts` | Toon materials, inverted-hull outlines, the instanced `Layer` |
 | `src/changelog.js` | `VERSION` and the patch notes shown in the workshop |
-| `e2e/smoke.spec.ts` | 26 tests against the built game, the four-policy bot, and the thirty-second golden |
+| `e2e/smoke.spec.ts` | 32 tests against the built game, the four-policy bot, and the thirty-second golden |
 | `REFERENCE.md` | **What the real game actually does**, observed from its screenshots and a gameplay video |
 | `NOTES.md` | Design decisions, tuning as shipped, and what to do next |
 
@@ -145,7 +146,21 @@ weaving is worth **9.4× per candle** over never steering.
   weaving and gathering was measuring the luck of level two. Level 2 happens to be a bad
   draw: the same bot loses 22 candles there against 6 on level 1.
 - **Seeding or clearing the save needs `Storage.prototype.setItem` frozen first**, or the
-  outgoing page writes live state back over it on reload.
+  outgoing page writes live state back over it on reload. The game hits this from the other
+  side: `save()` runs on `visibilitychange`, so the reload after "clear save data" fires it
+  and writes the erased progress straight back. `wiped` is a one-way latch that turns
+  `save()` into a no-op, and `clearing the save takes two taps` fails without it — verified
+  by removing it.
+- **Preferences are not progress, and do not share a key.** `settings.ts` owns
+  `candlegift.settings.v1`; the save owns `candlegift.v1`. The pause screen offers to erase
+  one next to switches that control the other, and that promise only holds if they are
+  separate. A settings loader must also test `=== false` rather than truthiness, or a key
+  written before a field existed silently reads as "off" for everyone upgrading.
+- **Pausing stops `frame` calling `tick`, and updates `last` before it bails.** Freezing the
+  whole frame is what leaves the last rendered image on the canvas behind the menu; going
+  through `run.active` would stop the runner and leave the camera drifting and the confetti
+  falling. Updating `last` on both sides of the pause is what stops resume handing the
+  simulation the entire length of the pause as one step.
 
 ## Numbers that are calibrated, not chosen
 

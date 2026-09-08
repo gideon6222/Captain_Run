@@ -12,4 +12,5 @@ export * from '../src/candle';
 export * from '../src/tray';
 export * from '../src/stack';
 export * from '../src/appraise';
+export * from '../src/settings';
 export * from '../src/changelog.js';

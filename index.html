@@ -86,6 +86,15 @@
     background:var(--paper); border:3px solid var(--edge); border-radius:14px;
     box-shadow:0 4px 0 var(--edge); padding:5px 11px; color:var(--ink);
   }
+  .tleft{display:flex; align-items:flex-start; gap:7px;}
+  /* The HUD does not take pointer events, so a control in it must ask. */
+  .uibtn{
+    pointer-events:auto; font-family:inherit; font-weight:800; cursor:pointer;
+    font-size:13px; line-height:1; letter-spacing:.08em; padding:10px 10px;
+    color:var(--pink); min-width:40px;
+  }
+  .uibtn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
+  .uibtn.hidden{display:none;}
   #level{font-size:16px; letter-spacing:.04em; line-height:1.05; text-align:center;}
   #level small{display:block; font-size:8.5px; color:#9a6ab0; letter-spacing:.16em;}
 
@@ -148,6 +157,49 @@
   .shead .sub{font-size:11px; letter-spacing:.1em; margin-top:2px; color:#ffd8e8;}
   .shead .bal{display:flex; gap:14px; margin-top:9px; font-size:15px; align-items:center;}
   .shead .bal em{font-style:normal; color:#ffd8e8; font-size:10px; letter-spacing:.1em;}
+
+  /* the pause screen */
+  .setrow{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:11px 12px; margin-bottom:9px;
+    border:3px solid var(--edge); border-radius:14px;
+    background:#fff8fc; box-shadow:0 3px 0 var(--edge);
+  }
+  .setrow.col{flex-direction:column; align-items:stretch; gap:6px;}
+  .setlab span{font-size:14px; letter-spacing:.06em; color:var(--ink);}
+  .setlab em{display:block; font-style:normal; font-size:10.5px; letter-spacing:.06em;
+    color:#8a6a9c; margin-top:2px;}
+  .setlab.wide{display:flex; align-items:baseline; justify-content:space-between;}
+  .setlab.wide b{font-size:15px; color:var(--pink);}
+  .setnote{font-style:normal; font-size:10.5px; letter-spacing:.06em; color:#8a6a9c;}
+  .toggle{
+    font-family:inherit; font-weight:800; font-size:12.5px; letter-spacing:.1em;
+    border:3px solid var(--edge); border-radius:12px; padding:9px 16px; min-width:72px;
+    background:linear-gradient(#4fe07d,#25a854); color:#fff; box-shadow:0 3px 0 var(--edge);
+    text-shadow:0 2px 0 rgba(0,0,0,.22); cursor:pointer;
+  }
+  .toggle[aria-checked="false"]{background:linear-gradient(#e4d8ee,#c3b2d2); color:#5b3a70;
+    text-shadow:none;}
+  .toggle:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
+  /* touch-action:none, because the sheet around it is pan-y and a horizontal
+     drag on a slider must reach the slider rather than being read as a scroll
+     that never happens. */
+  #optSens{width:100%; touch-action:none; accent-color:#e8226e; height:26px;}
+
+  .danger{
+    margin:16px 0 2px; padding:12px; border:3px dashed rgba(200,30,60,.5);
+    border-radius:14px; background:#fff2f3;
+  }
+  .wipe{
+    width:100%; font-family:inherit; font-weight:800; font-size:13px; letter-spacing:.1em;
+    border:3px solid var(--edge); border-radius:12px; padding:12px;
+    background:linear-gradient(#fff,#ffe2e5); color:#c01f38; box-shadow:0 3px 0 var(--edge);
+    cursor:pointer;
+  }
+  .wipe.armed{background:linear-gradient(#ff6b78,#d31f36); color:#fff;
+    text-shadow:0 2px 0 rgba(0,0,0,.25);}
+  .wipe:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
+  .wipenote{margin-top:8px; font-size:10.5px; letter-spacing:.05em; color:#a04a58; text-align:center;}
 
   /* the result card */
   #result{
@@ -273,7 +325,13 @@
 
 <div id="hud">
   <div class="toprow">
-    <div class="panel" id="level">1<small>LEVEL</small></div>
+    <div class="tleft">
+      <div class="panel" id="level">1<small>LEVEL</small></div>
+      <!-- Beside the level pill rather than in a corner: the HUD is
+           pointer-events:none, so anything clickable has to opt back in, and one
+           cluster that does is easier to keep honest than four. -->
+      <button class="panel uibtn" id="btnPause" aria-label="Pause">&#10073;&#10073;</button>
+    </div>
     <div class="money out" id="coinsWrap">$<span id="coins">0</span></div>
   </div>
   <div id="bars"><div id="prog"><i></i></div></div>
@@ -297,6 +355,41 @@
 <div id="toast" class="out"></div>
 <div id="hint" class="out">DRAG TO STEER</div>
 <div id="pops"></div>
+
+<!-- The pause screen. A `.modal` like the workshop, which is not only for the
+     look: `onUI()` in the input layer treats anything inside `.modal` as UI and
+     stops the steering handler eating the drag, so the sliders and switches in
+     here work for the same reason the shop scrolls. -->
+<div id="pauseScreen" class="modal hidden">
+  <div class="sheet">
+    <div class="shead">
+      <h2 class="out">PAUSED</h2>
+      <div class="sub" id="pauseSub">LEVEL 1</div>
+    </div>
+
+    <div class="setrow">
+      <div class="setlab"><span>SOUND</span><em>Dips, smashes, coins</em></div>
+      <button class="toggle" id="optSound" role="switch" aria-checked="true">ON</button>
+    </div>
+    <div class="setrow">
+      <div class="setlab"><span>MUSIC</span><em>The workshop theme</em></div>
+      <button class="toggle" id="optMusic" role="switch" aria-checked="true">ON</button>
+    </div>
+    <div class="setrow col">
+      <div class="setlab wide"><span>STEERING</span><b id="sensVal">1.0&times;</b></div>
+      <em class="setnote">How far the tray moves for the same swipe</em>
+      <input id="optSens" type="range" min="50" max="160" step="5" value="100"
+             aria-label="Steering sensitivity">
+    </div>
+
+    <div class="danger">
+      <button class="wipe" id="btnWipe">CLEAR SAVE DATA</button>
+      <div class="wipenote" id="wipeNote">Erases every level, upgrade and coin. Settings are kept.</div>
+    </div>
+
+    <div class="gowrap"><button class="go" id="btnResume">RESUME</button></div>
+  </div>
+</div>
 
 <div id="shopScreen" class="modal hidden">
   <div class="sheet">

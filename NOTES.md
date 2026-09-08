@@ -200,6 +200,23 @@ Recorded because each one is cheap to reintroduce.
     now comes from the mean over six levels; the e2e test pins level one's ratings as a
     regression guard and says so.
 
+## Pause and settings (v4.2.0)
+
+Asked for directly: a pause button that reaches settings and can clear the save.
+
+- Pause stops `frame()` calling `tick()` at all, so the simulation, the camera, the
+  particles and the HUD all freeze and the last rendered frame stays on the canvas. `last`
+  is updated before the bail-out, so RESUME does not hand the simulation the length of the
+  pause as one step.
+- The panel is a `.modal`, which is not only a look: `onUI()` already excludes `.modal` from
+  the steering handler, so the sliders work for the same reason the shop scrolls.
+- Settings live on their **own** localStorage key. Progress and preferences have different
+  lifetimes, and the pause screen offers to erase one right next to switches for the other.
+- Sound and music are separate buses in the audio graph (`sfxGain`, `musicGain`), because
+  muting the master would take both.
+- Clearing takes two taps, and arming times out after four seconds so a stray tap cannot
+  leave a live trigger under a thumb.
+
 ## Known gaps / next
 
 1. **The upgrade list is still ours, not the reference's.** He asked for "same traps and

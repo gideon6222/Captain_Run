@@ -15,7 +15,8 @@ import * as CD from './candle';
 import * as TR from './tray';
 import * as ST from './stack';
 import { appraise } from './appraise';
-import { load, save as writeSave } from './save';
+import { load, save as writeSave, KEY as SAVE_KEY } from './save';
+import { loadSettings, saveSettings, clampSens, SENS_MIN, SENS_MAX } from './settings';
 import { createSfx } from './sfx';
 import { attach, toon, box, Layer, OUTLINE_MAT } from './gfx';
 
@@ -27,7 +28,19 @@ import { attach, toon, box, Layer, OUTLINE_MAT } from './gfx';
 // left here is the binding: one live save object and thin wrappers.
 // ─────────────────────────────────────────────────────────────────────────────
 const S = load();
-const save = () => writeSave(S);
+/* One-way latch, set the moment the player erases their save.
+
+   Without it, clearing is undone by the game itself: `save()` runs on
+   `visibilitychange`, a reload fires that in most browsers, and the outgoing
+   page writes live state straight back over the key it was just asked to
+   delete. The same trap the e2e harness works around by freezing
+   `Storage.prototype.setItem`, arrived at from the other direction. */
+let wiped = false;
+const save = () => { if (!wiped) writeSave(S); };
+
+/* Preferences, on their own key. See `settings.ts` for why they are not part
+   of the save. */
+const SET = loadSettings();
 
 const priceMul     = () => TU.priceFor(S.level);
 const startCandles = () => TU.startCandles(S.up);
@@ -570,6 +583,7 @@ function startLevel() {
   toast(WORKSHOPS[run.workshop].name, 1.4);
   lastHud = {};
   syncHUD();
+  syncPauseBtn();
 }
 
 /* The green plus on a shop front, as one texture rather than two crossed
@@ -991,6 +1005,7 @@ function openShop(title, sub) {
   shopScreenEl.classList.remove('hidden');
   S.seenShop = true;
   save();
+  syncPauseBtn();
 }
 
 function renderShop() {
@@ -1038,6 +1053,130 @@ function buy(id) {
   syncHUD();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PAUSE — settings, and the one destructive control in the game
+// ─────────────────────────────────────────────────────────────────────────────
+/* Pausing stops `frame` calling `tick` at all rather than setting some
+   `run.active = false`. That freezes the whole frame - simulation, camera,
+   particles, the HUD - and leaves the last rendered image on the canvas, which
+   is what a player expects to see behind a pause menu. Going through
+   `run.active` would have stopped the runner and left the camera drifting and
+   the confetti falling. */
+let paused = false;
+const pauseScreenEl = $('pauseScreen'), pauseBtn = $('btnPause');
+
+function canPause() {
+  return run.active && !run.over && shopScreenEl.classList.contains('hidden');
+}
+
+function openPause() {
+  if (paused || !canPause()) return;
+  paused = true;
+  disarmWipe();
+  syncSettingsUI();
+  $('pauseSub').textContent = `LEVEL ${S.level}  ·  ${count()} CANDLES`;
+  pauseScreenEl.classList.remove('hidden');
+  save();
+}
+
+function closePause() {
+  if (!paused) return;
+  paused = false;
+  disarmWipe();
+  pauseScreenEl.classList.add('hidden');
+  /* The clock has been running while the panel was open; without this the
+     first frame after RESUME is one long step and the tray teleports. */
+  last = performance.now();
+}
+
+/* Shown only while a run is actually happening. A pause button on the results
+   screen is a button that does nothing, which is worse than no button. */
+function syncPauseBtn() {
+  pauseBtn.classList.toggle('hidden', !canPause());
+}
+
+pauseBtn.addEventListener('click', () => { sfx.init(); openPause(); });
+$('btnResume').addEventListener('click', closePause);
+/* Tapping the dimmed game behind the sheet resumes, which is what every phone
+   game does and what a thumb tries first. */
+pauseScreenEl.addEventListener('click', (e) => { if (e.target === pauseScreenEl) closePause(); });
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' && e.key !== 'p' && e.key !== 'P') return;
+  if (paused) closePause(); else openPause();
+});
+
+// -- the settings themselves --------------------------------------------------
+function applySettings() {
+  sfx.setSound(SET.sound);
+  sfx.setMusic(SET.music);
+  saveSettings(SET);
+}
+
+function syncSettingsUI() {
+  for (const [id, on] of [['optSound', SET.sound], ['optMusic', SET.music]]) {
+    const b = $(id);
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+    b.textContent = on ? 'ON' : 'OFF';
+  }
+  $('optSens').value = String(Math.round(SET.sens * 100));
+  $('sensVal').innerHTML = SET.sens.toFixed(1) + '&times;';
+}
+
+$('optSound').addEventListener('click', () => {
+  SET.sound = !SET.sound; applySettings(); syncSettingsUI();
+  if (SET.sound) sfx.coin();     // so the switch proves itself
+});
+$('optMusic').addEventListener('click', () => {
+  SET.music = !SET.music; applySettings(); syncSettingsUI();
+});
+/* The slider's range comes from `settings.ts`, so the bounds the clamp
+   enforces and the bounds the thumb can reach cannot drift apart. */
+$('optSens').min = String(Math.round(SENS_MIN * 100));
+$('optSens').max = String(Math.round(SENS_MAX * 100));
+$('optSens').addEventListener('input', (e) => {
+  SET.sens = clampSens(Number(e.target.value) / 100);
+  applySettings(); syncSettingsUI();
+});
+
+// -- clearing the save --------------------------------------------------------
+/* Two taps, because there is no undo. The first arms the button and relabels
+   it; the second erases. Arming times out, so a stray tap cannot leave a live
+   trigger sitting under the player's thumb for the rest of the run. */
+let wipeArmed = false, wipeTimer = 0;
+function disarmWipe() {
+  wipeArmed = false;
+  clearTimeout(wipeTimer);
+  const b = $('btnWipe');
+  b.classList.remove('armed');
+  b.textContent = 'CLEAR SAVE DATA';
+  $('wipeNote').textContent = 'Erases every level, upgrade and coin. Settings are kept.';
+}
+
+$('btnWipe').addEventListener('click', () => {
+  const b = $('btnWipe');
+  if (!wipeArmed) {
+    wipeArmed = true;
+    b.classList.add('armed');
+    b.textContent = 'TAP AGAIN TO ERASE';
+    $('wipeNote').textContent = 'This cannot be undone.';
+    sfx.deny();
+    clearTimeout(wipeTimer);
+    wipeTimer = setTimeout(disarmWipe, 4000);
+    return;
+  }
+  clearTimeout(wipeTimer);
+  wiped = true;                       // stop every later save() writing it back
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* private mode */ }
+  b.textContent = 'ERASED';
+  $('wipeNote').textContent = 'Starting over…';
+  /* Reload rather than reset in place: boot is the one code path that is
+     already known to build a correct virgin game, and half a dozen `S.x = 0`
+     assignments is a second one to keep in step with it. */
+  setTimeout(() => location.reload(), 400);
+});
+
+applySettings();
+
 $('btnGo').addEventListener('click', () => {
   sfx.init();
   shopScreenEl.classList.add('hidden');
@@ -1074,6 +1213,7 @@ function showBuildInfo() {
 function finishLevel() {
   if (run.over) return;
   run.active = false; run.over = true; run.gift = true; run.giftT = 0;
+  syncPauseBtn();
   const a = appraise(run.tray, {
     cash: run.cash, earnMul: earnMul(), priceMul: priceMul(),
   });
@@ -1158,7 +1298,7 @@ let dragId = null, dragX = 0, dragStartX = 0;
    preventDefault() on every drag it owns, so a swipe meant to scroll the shop
    was being eaten by the steering. Combined with touch-action on body it made
    the upgrade list unscrollable, and the START button sits below it. */
-const onUI = (e) => !!(e.target && e.target.closest && e.target.closest('.modal'));
+const onUI = (e) => !!(e.target && e.target.closest && e.target.closest('.modal, .uibtn'));
 
 function ptDown(e) {
   /* Audio still needs the gesture even when the tap was on a menu - Chrome
@@ -1189,7 +1329,7 @@ function ptMove(e) {
        survived there for that game's whole life because every test drove the
        steering seam in world coordinates. `dragging right moves the stack
        right` in e2e drives real pointer events for exactly that reason. */
-    run.targetX = clamp(dragStartX - dx * 8.0, -T.laneClamp, T.laneClamp);
+    run.targetX = clamp(dragStartX - dx * 8.0 * SET.sens, -T.laneClamp, T.laneClamp);
   }
   e.preventDefault();
 }
@@ -1784,6 +1924,10 @@ function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
   if (dt > 0.05) dt = 0.05;
+  /* `last` is updated BEFORE the bail-out, so resuming does not hand the
+     simulation the whole length of the pause as one step. The clamp above
+     would have caught it, but only by throwing the time away silently. */
+  if (paused) return;
   if (!harnessFrozen) tick(dt);
 }
 

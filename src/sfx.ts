@@ -27,6 +27,12 @@ export interface SfxHooks {
 
 export interface Sfx {
   init(): void;
+  /* Two switches, not one, because they are two complaints. Music is the thing
+     you get tired of on the twentieth run; effects are the thing that makes a
+     game unplayable on a bus. They sit on separate buses for the same reason -
+     muting the master would take both. */
+  setSound(on: boolean): void;
+  setMusic(on: boolean): void;
   dip(): void;          // through a wax curtain
   sparkle(): void;      // the glitter station
   press(): void;        // the mould stamps
@@ -42,12 +48,18 @@ export interface Sfx {
 export function createSfx(hooks: SfxHooks): Sfx {
   let ac: AudioContext | null = null;
   let master: GainNode | null = null;
+  let sfxGain: GainNode | null = null;
   let musicGain: GainNode | null = null;
+  /* Held outside the graph so a switch thrown before the first gesture - which
+     is most of them, since the pause screen is reachable before any sound has
+     played - is applied when `init` finally builds the nodes. */
+  let soundOn = true, musicOn = true;
   let noiseBuf: AudioBuffer | null = null;
   let delay: DelayNode | null = null;
   let step = 0, nextTime = 0, lastPing = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
   const THEME = [0, 3, 5, 7, 5, 3, 0, -2];   // D minor-ish, 8 slow notes
+  const MUSIC_VOL = 0.34;
 
   function init() {
     /* Called on every gesture, not just the first. A context created before a
@@ -60,7 +72,9 @@ export function createSfx(hooks: SfxHooks): Sfx {
     master = ac.createGain(); master.gain.value = 0.6;
     const comp = ac.createDynamicsCompressor();
     master.connect(comp); comp.connect(ac.destination);
-    musicGain = ac.createGain(); musicGain.gain.value = 0.34; musicGain.connect(master);
+    sfxGain = ac.createGain(); sfxGain.gain.value = soundOn ? 1 : 0; sfxGain.connect(master);
+    musicGain = ac.createGain(); musicGain.gain.value = musicOn ? MUSIC_VOL : 0;
+    musicGain.connect(master);
     delay = ac.createDelay(1.0); delay.delayTime.value = 0.34;
     const fb = ac.createGain(); fb.gain.value = 0.3;
     delay.connect(fb); fb.connect(delay); delay.connect(musicGain);
@@ -91,7 +105,7 @@ export function createSfx(hooks: SfxHooks): Sfx {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(vol, t + (atk || 0.005));
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(dest || master);
+    o.connect(g); g.connect(dest || sfxGain || master);
     o.start(t); o.stop(t + dur + 0.02);
     return o;
   }
@@ -104,7 +118,7 @@ export function createSfx(hooks: SfxHooks): Sfx {
     const t = ac.currentTime;
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    s.connect(f); f.connect(g); g.connect(master);
+    s.connect(f); f.connect(g); g.connect(sfxGain || master);
     s.start(t); s.stop(t + dur + 0.02);
   }
 
@@ -157,6 +171,14 @@ export function createSfx(hooks: SfxHooks): Sfx {
 
   return {
     init,
+    setSound(on: boolean) {
+      soundOn = on;
+      if (sfxGain) sfxGain.gain.value = on ? 1 : 0;
+    },
+    setMusic(on: boolean) {
+      musicOn = on;
+      if (musicGain) musicGain.gain.value = on ? MUSIC_VOL : 0;
+    },
     /* A soft wet thud with a rising tail: wax closing over wax. Pitch and
        filter are jittered on everything repeatable, or the fourth station in a
        row turns the game into a machine. */

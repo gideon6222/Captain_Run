@@ -8,9 +8,19 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '4.1.0';
+export const VERSION = '4.2.0';
 
 export const CHANGELOG = [
+  {
+    version: '4.2.0', date: '2026-09-08', title: 'Pause',
+    notes: [
+      'A pause button beside the level counter. Everything stops \u2014 the run, the camera, the confetti \u2014 and picks up exactly where it was.',
+      'Sound and music have their own switches, so you can keep the smashes and drop the theme.',
+      'A steering slider, for when the same swipe should move the tray further or less far.',
+      'Clear save data, from the pause screen. It takes two taps and it says so, and your sound and steering settings survive it.',
+      'Esc or P pauses too, if you are playing at a desk.'
+    ]
+  },
   {
     version: '4.1.0', date: '2026-09-08', title: 'The traps, drawn from life',
     notes: [

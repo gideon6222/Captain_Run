@@ -35,6 +35,25 @@ async function bootFresh(page: Page, seconds = 0) {
 
 const state = (page: Page) => page.evaluate(() => (window as any).__CR.state());
 
+/* Boot WITHOUT freezing, for the handful of tests that are about real elapsed
+   time rather than about the simulation. `freeze()` stops the rAF loop, which
+   is exactly the thing a pause test needs to observe. */
+async function bootLive(page: Page) {
+  await page.addInitScript((key) => {
+    try {
+      localStorage.removeItem(key);
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k: string, v: string) {
+        if (k === key) return;
+        return set.call(this, k, v);
+      };
+    } catch (e) { /* private mode */ }
+  }, KEY);
+  page.on('pageerror', (e) => { throw new Error('uncaught page error: ' + e.message); });
+  await page.goto('/?debug');
+  await expect(page.locator('#boot')).toHaveClass(/hidden/, { timeout: 20_000 });
+}
+
 /* Back to a clean LEVEL ONE, not just a clean run.
 
    `freeze()` restarts the level in place, and finishing a level increments
@@ -517,6 +536,189 @@ test('dragging right moves the tray right on the screen', async ({ page }) => {
 
   expect(right, `dragging right put the tray at ndc ${right}`).toBeGreaterThan(0.05);
   expect(left, `dragging left put the tray at ndc ${left}`).toBeLessThan(-0.05);
+});
+
+// ── pause, settings, and the one destructive control ────────────────────────
+
+test('pause actually stops the simulation, and resume starts it again',
+  async ({ page }) => {
+    /* The claim worth testing is not "a panel appeared". A pause that only
+       hides the game keeps eating runway behind the menu, and a resume that
+       hands the simulation the whole length of the pause as one step teleports
+       the tray through whatever was in front of it. */
+    await bootLive(page);
+    await page.waitForTimeout(300);
+    const before = (await state(page)).z;
+    expect(before, 'the run should be moving before the pause').toBeGreaterThan(0);
+
+    await page.locator('#btnPause').click();
+    await expect(page.locator('#pauseScreen')).not.toHaveClass(/hidden/);
+    const atPause = (await state(page)).z;
+    await page.waitForTimeout(700);
+    expect((await state(page)).z, 'nothing may move while paused').toBe(atPause);
+
+    await page.locator('#btnResume').click();
+    await expect(page.locator('#pauseScreen')).toHaveClass(/hidden/);
+    const justAfter = (await state(page)).z;
+    await page.waitForTimeout(300);
+    expect((await state(page)).z, 'and the run must actually continue')
+      .toBeGreaterThan(justAfter);
+
+    /* There is deliberately no assertion here that resume did not "replay" the
+       pause as one long step. `frame()` clamps dt to 0.05 whatever happens, so
+       the worst a lost `last` update can cost is half a unit - and half a unit
+       is inside the round-trip latency of asking the page for its state, which
+       means such a test measures the harness rather than the game. The two
+       assertions above are the ones that can actually fail. */
+  });
+
+test('the pause button is only there while there is a run to pause', async ({ page }) => {
+  await bootLive(page);
+  await expect(page.locator('#btnPause')).toBeVisible();
+  /* Finishing the level opens the workshop; a pause button over the results
+     screen is a button that does nothing. */
+  await page.evaluate(() => {
+    const CR = (window as any).__CR;
+    CR.run.z = CR.T.levelChunks * CR.T.chunk + 20;
+  });
+  await expect(page.locator('#btnPause')).toBeHidden({ timeout: 10_000 });
+});
+
+test('the settings switches persist and reach the audio graph', async ({ page }) => {
+  await bootLive(page);
+  await page.locator('#btnPause').click();
+
+  const sound = page.locator('#optSound');
+  await expect(sound).toHaveAttribute('aria-checked', 'true');
+  await sound.click();
+  await expect(sound).toHaveAttribute('aria-checked', 'false');
+  await expect(sound).toHaveText('OFF');
+
+  await page.locator('#optSens').fill('130');
+  await expect(page.locator('#sensVal')).toHaveText('1.3×');
+
+  /* Written under their OWN key - the whole reason settings are not part of
+     the save is that clearing the save must not clear these. */
+  const stored = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('candlegift.settings.v1') || 'null'));
+  expect(stored).toMatchObject({ sound: false, sens: 1.3 });
+
+  await page.reload();
+  await expect(page.locator('#boot')).toHaveClass(/hidden/, { timeout: 20_000 });
+  await page.locator('#btnPause').click();
+  await expect(page.locator('#optSound')).toHaveAttribute('aria-checked', 'false');
+  await expect(page.locator('#sensVal')).toHaveText('1.3×');
+});
+
+test('steering sensitivity changes how far the same drag moves the tray',
+  async ({ page }) => {
+    /* Through real pointer events, because a setting that multiplies a constant
+       nobody drives is a setting that can be wired to nothing. */
+    await bootLive(page);
+    const drag = async () => {
+      await page.evaluate(() => { (window as any).__CR.steer(0); });
+      const box = (await page.locator('#game').boundingBox())!;
+      const y = box.y + box.height * 0.75;
+      await page.mouse.move(box.x + box.width * 0.5, y);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * 0.5 - 60, y, { steps: 6 });
+      await page.mouse.up();
+      return page.evaluate(() => (window as any).__CR.run.targetX);
+    };
+
+    const atOne = await drag();
+    await page.locator('#btnPause').click();
+    await page.locator('#optSens').fill('50');
+    await page.locator('#btnResume').click();
+    const atHalf = await drag();
+
+    expect(Math.abs(atOne), 'the drag must move the tray at all').toBeGreaterThan(0.2);
+    expect(Math.abs(atHalf), 'and less of it at the low end of the slider')
+      .toBeLessThan(Math.abs(atOne) * 0.8);
+  });
+
+/* Seed a save exactly ONCE, before the first boot.
+
+   Writing it from the page after load does not work and the reason is the
+   thing being tested: `save()` runs on `visibilitychange`, a reload fires
+   that, and the outgoing page writes its own live state over whatever the test
+   just put there. An init script runs before the game does - and the
+   sessionStorage latch keeps it from re-seeding when the wipe reloads. */
+async function seedSave(page: Page, data: Record<string, unknown>) {
+  await page.addInitScript(({ key, data: d }) => {
+    try {
+      if (sessionStorage.getItem('e2e-seeded')) return;
+      sessionStorage.setItem('e2e-seeded', '1');
+      localStorage.setItem(key, JSON.stringify(d));
+    } catch (e) { /* private mode */ }
+  }, { key: KEY, data });
+}
+
+test('clearing the save takes two taps, erases the run, and keeps the settings',
+  async ({ page }) => {
+    /* No storage freeze here: the point is that a real key is really removed
+       and stays removed, which a frozen setter would make vacuously true. */
+    page.on('pageerror', (e) => { throw new Error('uncaught page error: ' + e.message); });
+    await seedSave(page, {
+      v: 1, level: 7, coins: 99999, best: 7, bestValue: 5, stars: 9, seenShop: true,
+    });
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('candlegift.settings.v1',
+          JSON.stringify({ sound: false, music: true, sens: 1.5 }));
+      } catch (e) { /* private mode */ }
+    });
+    await page.goto('/?debug');
+    await expect(page.locator('#boot')).toHaveClass(/hidden/, { timeout: 20_000 });
+    await expect(page.locator('#level')).toContainText('7');
+    /* `seenShop` puts the workshop up at boot, and the pause button is
+       deliberately not offered over it. */
+    await page.locator('#btnGo').click();
+
+    await page.locator('#btnPause').click();
+    const wipe = page.locator('#btnWipe');
+    await expect(wipe).toHaveText('CLEAR SAVE DATA');
+
+    // one tap arms and relabels; it must not erase anything
+    await wipe.click();
+    await expect(wipe).toHaveText('TAP AGAIN TO ERASE');
+    await expect(wipe).toHaveClass(/armed/);
+    expect(await page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), KEY))
+      .toMatchObject({ level: 7 });
+
+    // the second tap erases, and the page reloads itself into a fresh game
+    await wipe.click();
+    await page.waitForFunction(
+      () => document.getElementById('level')?.textContent?.startsWith('1') === true,
+      undefined, { timeout: 20_000 });
+
+    /* The real assertion is not "the key is null" - boot writes a fresh one
+       within a frame, so that would be a race. It is that the progress is
+       gone and did not come back through the reload's own save(). */
+    const after = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), KEY);
+    expect(after?.level ?? 1, 'the reload must not restore the erased progress').toBe(1);
+    expect(after?.coins ?? 0).toBe(0);
+
+    /* And the preferences survive it, which is the promise the panel makes in
+       the sentence under the button. */
+    const kept = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('candlegift.settings.v1') || 'null'));
+    expect(kept).toMatchObject({ sound: false, sens: 1.5 });
+  });
+
+test('dragging over the pause sheet does not steer the tray', async ({ page }) => {
+  /* The same failure that made the workshop unscrollable: the steering handler
+     lives on `window`, so anything drawn over the game has to be excluded by
+     `onUI` or a swipe at a slider drives the run instead. */
+  await bootLive(page);
+  await page.locator('#btnPause').click();
+  const before = await page.evaluate(() => (window as any).__CR.run.targetX);
+  const box = (await page.locator('#pauseScreen .sheet').boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.5, box.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5 - 90, box.y + 40, { steps: 6 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => (window as any).__CR.run.targetX)).toBe(before);
 });
 
 /* ── the golden ──────────────────────────────────────────────────────────────
