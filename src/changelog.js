@@ -8,9 +8,23 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '3.0.0';
+export const VERSION = '4.0.0';
 
 export const CHANGELOG = [
+  {
+    version: '4.0.0', date: '2026-09-08', title: 'One long candle',
+    notes: [
+      'Your candles now lie flat along the track as one long slab, packed side by side with gold tips down one edge - the way the game this is modelled on does it.',
+      'A white workshop under a flat cyan sky, with lilac rails and pale lavender stripes.',
+      'New ROTATE plate: drive over it and the whole slab turns end for end, so the back of it goes through the next pool first.',
+      'New SCENT station, bought once from the Scent Shop. It is a station rather than a number, and it stays for every run after.',
+      'New sweeper: an orange bar that slides across the track. It is the one obstacle that moves, so a long slab has to start turning early.',
+      'A stacked-candle skyline below the track, and shop fronts either side of the finish line.',
+      'The end of a run measures the batch on a value gauge with a real scale, instead of only awarding stars.',
+      'Fredoka throughout, so the signs and the HUD read like the real thing.',
+      'Rebalanced: weaving both pools is now worth about 9x idling per candle.'
+    ]
+  },
   {
     version: '3.0.0', date: '2026-09-07', title: 'Dip them yourself',
     notes: [

@@ -84,11 +84,12 @@ attach(scene);
 // LAYERS — one InstancedMesh per kind of thing, rewritten every frame.
 // ─────────────────────────────────────────────────────────────────────────────
 const M2 = new THREE.Matrix4();
-const Q = new THREE.Quaternion(), QT = new THREE.Quaternion();
+const Q = new THREE.Quaternion(), QT = new THREE.Quaternion(), QT2 = new THREE.Quaternion();
 const V = new THREE.Vector3(), V2 = new THREE.Vector3();
 const ONE = new THREE.Vector3(1, 1, 1);
 const CTMP = new THREE.Color();
 const WHITE = new THREE.Color(0xffffff);
+const SCENTC = new THREE.Color(0xd8b4ff);
 
 /* One geometry per mould, built once at boot.
 
@@ -122,8 +123,12 @@ const MOULD_GEO = MOULDS.map(mouldGeometry);
 const BANDS = T.maxCandles * T.maxLayers;
 const C = {
   band: MOULD_GEO.map((g) => new Layer(g, 0xffffff, BANDS, 0.026)),
-  wick: new Layer(box(0.05, 1, 0.05), 0x3a2a1c, T.maxCandles, 0),
-  ribbon: new Layer(box(1, 0.20, 1), 0xffffff, T.maxCandles, 0.028),
+  /* The gold tip that pokes out of the left edge of the loaf. */
+  wick: new Layer(new THREE.ConeGeometry(0.5, 1, 7), 0xffc93c, T.maxCandles, 0.024),
+  /* After WRAP a candle is a present: a box and a ribbon across it. */
+  ribbon: new Layer(box(1, 1, 1), 0xffffff, T.maxCandles, 0.030),
+  bow: new Layer(box(1, 1, 1), 0xffffff, T.maxCandles, 0),
+  spark: new Layer(new THREE.OctahedronGeometry(1, 0), 0xffffff, T.maxCandles, 0),
 };
 
 /* Additive, unlit and outside the toon system - a flame that takes a shadow
@@ -156,6 +161,16 @@ const W = {
   rollBar:  new Layer(box(4.6, 0.13, 0.13), 0x8a1a2c, 14, 0),
   saw:      new Layer(new THREE.CylinderGeometry(0.85, 0.85, 0.10, 12), 0xdfe6ef, 14, 0.050),
   sawPost:  new Layer(box(0.20, 2.6, 0.20), 0xb0447a, 14, 0),
+  /* The sweeper: a salmon bar with dark blue chevrons that slides across the
+     lane. The only obstacle that MOVES, which is why it is the one that makes
+     a long loaf feel long - you have to start turning before it is in reach. */
+  sweeper:  new Layer(box(3.0, 0.42, 0.50), 0xff8a4c, 10, 0.050),
+  sweepMark: new Layer(box(0.20, 0.44, 0.52), 0x2b3f7a, 44, 0),
+  /* The skyline: pale stacked-cylinder towers well below the track, like giant
+     candle stacks. Straight off the reference, and the only thing that gives
+     the sky any depth once a cloud has drifted past. */
+  tower:    new Layer(new THREE.CylinderGeometry(1, 1, 1, 10), 0xdff0ff, 96, 0),
+  towerTip: new Layer(new THREE.ConeGeometry(0.62, 1.3, 8), 0xffd429, 24, 0),
   stripe:   new Layer(box(T.roadW, 0.06, 0.9), 0xffffff, 60, 0),
   rail:     new Layer(box(0.36, 0.36, 2.4), 0xffffff, 96, 0),
   pillar:   new Layer(new THREE.CylinderGeometry(0.30, 0.34, 3.0, 10), 0xffffff, 60, 0.048),
@@ -203,6 +218,42 @@ scene.add(glitter);
 // ─────────────────────────────────────────────────────────────────────────────
 // STATIONS — real meshes with pink banner signs, few enough to be objects
 // ─────────────────────────────────────────────────────────────────────────────
+/* The marbled swirl on a wax pool.
+
+   The reference's pools are not flat colour - they have a lighter marbled
+   texture drifting through them, and it is most of what makes the wax read as
+   liquid rather than as a painted rectangle. One 128px canvas of soft blobs,
+   multiplied over the pool's own colour, reused by every pool in the game. */
+let SWIRL = null;
+function swirlTex() {
+  if (SWIRL) return SWIRL;
+  const n = 128;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = n;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, n, n);
+  /* Deterministic blobs: this is drawn once at boot and never re-rolled, so a
+     seeded stream would buy nothing, but a fixed pattern keeps every build
+     looking the same. */
+  for (let i = 0; i < 120; i++) {
+    const a = (i * 2.399);
+    const x = (Math.sin(a * 3.1) * 0.5 + 0.5) * n;
+    const y = (Math.cos(a * 2.3) * 0.5 + 0.5) * n;
+    const r = 5 + (i % 7) * 3;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0, 'rgba(255,255,255,0.85)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd;
+    g.beginPath(); g.arc(x, y, r, 0, 6.284); g.fill();
+  }
+  SWIRL = new THREE.CanvasTexture(cv);
+  SWIRL.wrapS = SWIRL.wrapT = THREE.RepeatWrapping;
+  SWIRL.repeat.set(1, 3);
+  SWIRL.needsUpdate = true;
+  return SWIRL;
+}
+
 const signCache = new Map();
 
 /* The sign is the loudest thing on the runway, because it is the only thing
@@ -213,7 +264,7 @@ function signTex(text, sub, accent) {
   let t = signCache.get(key);
   if (t) return t;
   const cv = document.createElement('canvas');
-  cv.width = 512; cv.height = 224;
+  cv.width = 512; cv.height = 168;
   const g = cv.getContext('2d');
   const round = (x, y, w, h, r) => {
     g.beginPath();
@@ -224,18 +275,18 @@ function signTex(text, sub, accent) {
       g.arcTo(x, y, x + w, y, r); g.closePath();
     }
   };
-  g.fillStyle = '#e8226e'; round(8, 20, 496, 184, 92); g.fill();
-  g.strokeStyle = '#8e0b40'; g.lineWidth = 12; round(8, 20, 496, 184, 92); g.stroke();
-  g.fillStyle = 'rgba(255,255,255,0.20)'; round(32, 40, 448, 50, 26); g.fill();
+  g.fillStyle = '#e8226e'; round(6, 10, 500, 148, 74); g.fill();
+  g.strokeStyle = '#9c0b45'; g.lineWidth = 9; round(6, 10, 500, 148, 74); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,0.18)'; round(30, 26, 452, 40, 20); g.fill();
 
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = '#ffffff';
-  g.font = '800 92px "Segoe UI",system-ui,sans-serif';
-  g.fillText(text, 256, sub ? 98 : 112);
+  g.font = '700 78px Fredoka,"Segoe UI",system-ui,sans-serif';
+  g.fillText(text, 256, sub ? 74 : 84);
   if (sub) {
-    g.font = '800 50px "Segoe UI",system-ui,sans-serif';
+    g.font = '600 38px Fredoka,"Segoe UI",system-ui,sans-serif';
     g.fillStyle = accent || '#ffe6f2';
-    g.fillText(sub, 256, 166);
+    g.fillText(sub, 256, 126);
   }
   t = new THREE.CanvasTexture(cv);
   t.needsUpdate = true;
@@ -244,107 +295,136 @@ function signTex(text, sub, accent) {
 }
 
 /* Every station kind in one table: what it is called, what colour it is, what
-   it does to ONE candle, and how loud it is about it.
+   it does to ONE candle, and which machine stands over it.
 
    `apply` takes a single candle's recipe, because a station is a pool on the
    ground and which candles are standing in it is the entire skill. Adding a
-   station is adding a row here plus a slot in STATION_SLOTS. */
-const KIND_WAX = 0, KIND_GLITTER = 1, KIND_PRESS = 2, KIND_WRAP = 3;
+   station is adding a row here plus a slot in STATION_SLOTS - which is the
+   shape that stops "extra stations" turning into a special case scattered
+   through the simulation. */
+const KIND_WAX = 0, KIND_GLITTER = 1, KIND_PRESS = 2, KIND_WRAP = 3,
+      KIND_ROTATE = 4, KIND_SCENT = 5;
 const KINDS = [
   {
-    n: 'WAX', liquid: true, accent: '#ffe6f2',
+    n: 'WAX', liquid: true, accent: '#ffe6f2', machine: 'ladle',
     label: () => 'CANDLE',
     sub: (h) => WAXES[h.wax].n,
     colour: (h) => WAXES[h.wax].col,
     apply: (h, r) => CD.dip(r, h.wax),
   },
   {
-    n: 'GLITTER', liquid: false, accent: '#fff0a8',
+    n: 'GLITTER', liquid: false, accent: '#fff0a8', machine: 'bottle',
     label: () => 'GLITTER',
     sub: () => '+SPARKLE',
     colour: () => 0xffd429,
     apply: (h, r) => CD.addGlitter(r, glitterPer()),
   },
   {
-    n: 'PRESS', liquid: false, accent: '#d8ffe8',
-    label: (h) => 'MOLD',
+    n: 'PRESS', liquid: false, accent: '#d8ffe8', machine: 'ram',
+    label: () => 'MOLD',
     sub: (h) => MOULDS[h.mould].n,
     colour: () => 0x8be0ff,
     apply: (h, r) => CD.press(r, h.mould),
   },
   {
-    n: 'WRAP', liquid: false, accent: '#ffd8ec',
+    n: 'WRAP', liquid: false, accent: '#ffd8ec', machine: 'gift',
     label: () => 'WRAP',
     sub: (h) => WRAPS[h.wrap].n,
-    colour: (h) => WRAPS[h.wrap].col || 0xff4d8d,
+    colour: (h) => WRAPS[h.wrap].col || 0xff3d92,
     apply: (h, r) => CD.wrapIn(r, h.wrap),
+  },
+  {
+    /* Straight off the reference: a white plate with a big curved arrow. It
+       turns the whole loaf end for end rather than treating a candle, so its
+       `apply` does nothing and `updatePools` handles it once, as a special
+       case, when the leader crosses the plate. */
+    n: 'ROTATE', liquid: false, accent: '#ffffff', machine: 'arrow',
+    label: () => 'ROTATE',
+    sub: () => 'TURN IT',
+    colour: () => 0xffffff,
+    apply: () => false,
+  },
+  {
+    /* The Scent Shop, and the only station you have to buy. That is the
+       reference's whole progression model - shops beside the track that add
+       stations - so it has to be a station and not a percentage. */
+    n: 'SCENT', liquid: true, accent: '#f0e4ff', machine: 'bottle',
+    label: () => 'SCENT',
+    sub: () => 'PERFUME',
+    colour: () => 0xd8b4ff,
+    apply: (h, r) => CD.addScent(r),
   },
 ];
 
 /* A station is a PAIR OF POOLS lying in the runway, side by side, each with a
-   sign over it - not a gate you pass through.
+   sign on a curved arm over it - not a gate you pass through.
 
    That is the difference between a station that happens to you and one you
-   play: a pool is a place, it has length, and the tray snakes through it, so
+   play: a pool is a place, it has length, and the loaf drives through it, so
    the candles that end up in the left pool are the ones that were on the left
-   when they got there. Sweeping across during a pair gets some candles into
-   both. The reference's guide describes exactly this and it is the whole
-   skill of the game. */
+   when they got there. */
 class Station {
   constructor() {
     this.group = new THREE.Group();
 
-    /* Gantry: a post each side and one down the middle, so the split between
-       the two pools is legible from a long way back. */
-    this.postL = new THREE.Mesh(box(0.26, 4.4, 0.26), toon(0xb0447a));
-    this.postM = this.postL.clone();
-    this.postR = this.postL.clone();
-    this.postL.position.set(-T.roadW / 2 - 0.1, 2.2, 0);
-    this.postM.position.set(0, 2.2, 0);
-    this.postR.position.set(T.roadW / 2 + 0.1, 2.2, 0);
-    this.beam = new THREE.Mesh(box(T.roadW + 0.6, 0.26, 0.26), toon(0xb0447a));
-    this.beam.position.y = 4.3;
-    this.group.add(this.postL, this.postM, this.postR, this.beam);
-
     this.half = [0, 1].map((i) => {
-      const x = i ? T.roadW / 4 : -T.roadW / 4;
+      const side = i ? 1 : -1;
+      const x = side * (T.roadW / 4);
       const g = new THREE.Group();
       g.position.x = x;
 
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.58), new THREE.MeshBasicMaterial({
-        transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      /* The reference hangs each sign from a thin dark CURVED ARM rising from
+         the track edge and leaning in over the pool, like a street lamp - not
+         from a gantry with a post either side. It is most of why its runway
+         reads as open sky rather than as a tunnel. */
+      const arm = new THREE.Mesh(new THREE.TorusGeometry(1.9, 0.075, 6, 14, Math.PI * 0.62), toon(0x2f3b52));
+      arm.position.set(side * (T.roadW / 4 - 0.1), 2.0, 0);
+      arm.rotation.z = side > 0 ? Math.PI * 0.42 : Math.PI * 0.58;
+      arm.rotation.y = Math.PI / 2;
+      const post = new THREE.Mesh(box(0.13, 2.2, 0.13), toon(0x2f3b52));
+      post.position.set(side * (T.roadW / 4 + 1.75), 1.1, 0);
+
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 1.05), new THREE.MeshBasicMaterial({
+        transparent: true, depthWrite: false,
       }));
-      /* Turned to face the camera. A PlaneGeometry faces +z and this camera
+      /* Turned to face the camera: a PlaneGeometry faces +z and this camera
          looks along +z, so an unrotated sign shows the player its back. */
       sign.rotation.y = Math.PI;
-      sign.position.y = 3.55;
+      sign.position.set(side * 0.2, 3.05, 0);
       sign.renderOrder = 6;
 
-      /* The pool itself: a shallow basin sunk into the runway, long enough to
-         weave across. */
+      // the pool itself, sunk into the runway
       const w = T.roadW / 2 - T.poolInset * 2;
       const liquid = new THREE.Mesh(new THREE.PlaneGeometry(w, T.poolLen), new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.92, depthWrite: false,
+        color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, map: swirlTex(),
       }));
       liquid.rotation.x = -Math.PI / 2;
       liquid.position.y = 0.05;
 
-      /* The machine over the pool - a ladle for wax, a hopper for glitter, a
-         ram for the press, a spool for the ribbon. It animates, because the
-         reference's single most "satisfying" quality is watching the machinery
-         work. */
-      const arm = new THREE.Mesh(box(0.22, 1.5, 0.22), toon(0xd8c0ff));
-      arm.position.set(0, 3.0, -T.poolLen / 2 + 1.2);
-      const head = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.44, 0.5, 12), toon(0xffffff));
-      head.position.set(0, 2.2, -T.poolLen / 2 + 1.2);
-      const pour = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 1.6, 8), new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.9,
+      /* The machine over it. A ladle that tips and pours, a glitter bottle
+         that shakes, a ram that slams, a gift box, or ROTATE's arrow plate.
+         The reference's single most "satisfying" quality is watching these
+         work, so they all animate. */
+      const headG = new THREE.Group();
+      const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 8), toon(0xffffff));
+      const pour = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 1.5, 8), new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.92,
       }));
-      pour.position.set(0, 1.15, -T.poolLen / 2 + 1.2);
+      pour.position.y = -0.95;
+      const gift = new THREE.Mesh(box(1.5, 1.4, 1.5), toon(0xffd429));
+      const giftBow = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.16, 6, 10), toon(0xff3d92));
+      giftBow.position.y = 0.78; giftBow.rotation.x = Math.PI / 2;
+      gift.add(giftBow);
+      const plate = new THREE.Mesh(box(T.roadW / 2 - 0.3, 0.18, 2.6), toon(0xffffff));
+      const arrowM = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.1, 4), toon(0xff3d92));
+      arrowM.rotation.z = -Math.PI / 2; arrowM.position.y = 0.35;
+      plate.add(arrowM);
+      headG.add(bowl, pour, gift, plate);
+      headG.position.set(side * 0.1, 2.15, -T.poolLen / 2 + 1.4);
 
-      g.add(sign, liquid, arm, head, pour);
+      g.add(arm, post, sign, liquid, headG);
       this.group.add(g);
-      return { g, sign, liquid, arm, head, pour };
+      return { g, arm, post, sign, liquid, headG, bowl, pour, gift, plate };
     });
 
     this.group.visible = false;
@@ -359,27 +439,38 @@ class Station {
       const p = this.half[i];
       p.sign.material.map = signTex(k.label(h), k.sub(h), k.accent);
       p.sign.material.needsUpdate = true;
-      const col = k.colour(h);
-      p.liquid.material.color.setHex(col);
-      p.liquid.material.opacity = k.liquid ? 0.92 : 0.34;
-      p.head.material = toon(col);
-      p.pour.material.color.setHex(col);
 
-      /* The ram slams on a beat; the ladle and hopper bob and pour. Cheap, and
-         it is most of what makes the line read as a factory. */
-      const beat = t * 2.4 + i * 0.7 + st.z * 0.11;
-      if (k.n === 'PRESS') {
-        const drop = Math.max(0, Math.sin(beat * 1.6));
-        p.head.position.y = 2.4 - drop * 1.5;
-        p.arm.position.y = 3.2 - drop * 0.75;
-        p.arm.scale.y = 1 - drop * 0.5;
-        p.pour.visible = false;
+      const col = k.colour(h);
+      p.liquid.visible = k.machine !== 'arrow';
+      p.liquid.material.color.setHex(col);
+      p.liquid.material.opacity = k.liquid ? 0.95 : 0.32;
+
+      const beat = t * 2.2 + i * 0.7 + st.z * 0.11;
+      p.bowl.visible = p.pour.visible = (k.machine === 'ladle' || k.machine === 'bottle');
+      p.gift.visible = k.machine === 'gift';
+      p.plate.visible = k.machine === 'arrow';
+      p.headG.visible = k.machine !== 'ram' || true;
+
+      if (k.machine === 'ladle' || k.machine === 'bottle') {
+        p.bowl.material = toon(col);
+        p.pour.material.color.setHex(col);
+        p.headG.position.y = 2.15 + Math.sin(beat) * 0.12;
+        p.headG.rotation.z = Math.sin(beat * 0.7) * 0.35;
+        p.pour.scale.y = 0.9 + Math.sin(beat * 3) * 0.14;
+      } else if (k.machine === 'ram') {
+        p.bowl.visible = true; p.pour.visible = false;
+        p.bowl.material = toon(0xff3d92);
+        const drop = Math.max(0, Math.sin(beat * 1.7));
+        p.headG.position.y = 2.5 - drop * 1.7;
+        p.headG.rotation.z = 0;
+      } else if (k.machine === 'gift') {
+        p.headG.position.y = 1.5 + Math.sin(beat) * 0.18;
+        p.headG.rotation.z = 0;
+        p.headG.rotation.y = beat * 0.4;
       } else {
-        p.head.position.y = 2.2 + Math.sin(beat) * 0.10;
-        p.arm.position.y = 3.0;
-        p.arm.scale.y = 1;
-        p.pour.visible = true;
-        p.pour.scale.y = 0.9 + Math.sin(beat * 3) * 0.12;
+        p.headG.position.y = 0.12;
+        p.headG.rotation.set(0, 0, 0);
+        p.plate.rotation.y = Math.sin(beat) * 0.25;
       }
     }
   }
@@ -401,7 +492,7 @@ const stationPool = [new Station(), new Station(), new Station()];
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────────────────────────────────────
-let stations = [], obstacles = [], notes = [], loose = [], props = [], clouds = [];
+let stations = [], obstacles = [], notes = [], loose = [], props = [], clouds = [], towers = [];
 
 const run = {
   active: false, over: false, gift: false,
@@ -412,7 +503,7 @@ const run = {
   trail: ST.newTrail(),
   cash: 0, lost: 0, gained: 0, dips: 0, chunkSpawned: -1,
   workshop: 0, scale: 1, shake: 0, hitStop: 0,
-  lastCloudWindow: -999, giftT: 0,
+  lastCloudWindow: -999, lastSkyWindow: -999, giftT: 0,
 };
 const count = () => run.tray.length;
 let lastResult = null;
@@ -443,6 +534,7 @@ function startLevel() {
   run.workshop = (S.level - 1) % WORKSHOPS.length;
   run.shake = 0; run.hitStop = 0; run.giftT = 0;
   run.lastCloudWindow = -999;
+  run.lastSkyWindow = -999;
   stationSeq = 0;
   stations.length = 0; obstacles.length = 0;
   notes.length = 0; loose.length = 0; props.length = 0;
@@ -457,6 +549,68 @@ function startLevel() {
   lastHud = {};
   syncHUD();
 }
+
+/* The green plus on a shop front, as one texture rather than two crossed
+   boxes. Cached forever: there is one of it. */
+let plusCache = null;
+function plusTex() {
+  if (plusCache) return plusCache;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#ffffff';
+  g.fillRect(14, 27, 36, 10);
+  g.fillRect(27, 14, 10, 36);
+  plusCache = new THREE.CanvasTexture(cv);
+  return plusCache;
+}
+
+/* The shop area past the finish line: panels either side of the track with a
+   pink pill sign and a green plus button, which is how the reference sells
+   progression - you drive between shop fronts and buy the one you want. Ours
+   opens the workshop sheet instead of being clicked in 3D, so these are the
+   scene-setting half of it; the sheet is the half you can press.
+
+   Static meshes rather than a Layer: there are three of them, they never move,
+   and they are frustum-culled out of every frame except the last few seconds of
+   a run. */
+const shopArea = new THREE.Group();
+[['SCENT SHOP', '$4,000', 1], ['ONLINE SHOP', '$1,000', -1], ['LUXURY SHOP', '$9,000', 1]]
+  .forEach(([name, price, side], i) => {
+    const g = new THREE.Group();
+    g.position.set(side * (T.roadW / 2 + 3.0), 0, BENCH_Z + 6 + i * 7.5);
+
+    /* Four meshes each, and that is a budget rather than a style: these are
+       plain Meshes, not a Layer, so every one of them is its own draw call and
+       three shop fronts at seven meshes apiece put the frame over 85 calls the
+       moment they came into frustum. A crossed pair of bars for the plus and an
+       outline hull are exactly the kind of detail that is invisible at this
+       distance and costs the same as the panel itself. */
+    const panel = new THREE.Mesh(box(4.6, 4.2, 0.6), toon(0xfff4fb));
+    panel.position.y = 2.1;
+
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.35), new THREE.MeshBasicMaterial({
+      map: signTex(name, price, '#ffe6f2'), transparent: true, depthWrite: false,
+    }));
+    /* Faces +z like every PlaneGeometry, and the camera looks along +z. */
+    sign.rotation.y = Math.PI;
+    sign.position.set(0, 3.1, -0.4);
+    sign.renderOrder = 6;
+
+    // the green plus, which is the reference's buy button
+    const pad = new THREE.Mesh(box(1.6, 1.6, 0.3), toon(0x3fce6a));
+    pad.position.set(0, 1.4, -0.35);
+    const plus = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), new THREE.MeshBasicMaterial({
+      map: plusTex(), transparent: true, depthWrite: false,
+    }));
+    plus.rotation.y = Math.PI;
+    plus.position.set(0, 1.4, -0.52);
+    plus.renderOrder = 6;
+
+    g.add(panel, sign, pad, plus);
+    shopArea.add(g);
+  });
+scene.add(shopArea);
 
 function applyWorkshop(p) {
   host.style.background = `linear-gradient(180deg, ${p.sky[0]} 0%, ${p.sky[1]} 74%, ${p.sky[1]} 100%)`;
@@ -485,12 +639,14 @@ function applyWorkshop(p) {
 const STATION_SLOTS = [
   { c: 4,  a: KIND_WAX,     b: KIND_WAX },
   { c: 8,  a: KIND_WAX,     b: KIND_GLITTER },
-  { c: 12, a: KIND_WAX,     b: KIND_WAX },
-  { c: 16, a: KIND_GLITTER, b: KIND_PRESS },
-  { c: 20, a: KIND_WAX,     b: KIND_WAX },
-  { c: 24, a: KIND_PRESS,   b: KIND_WAX },
-  { c: 28, a: KIND_WRAP,    b: KIND_GLITTER },
-  { c: 31, a: KIND_WAX,     b: KIND_WRAP },
+  { c: 11, a: KIND_ROTATE,  b: KIND_WAX },
+  { c: 14, a: KIND_WAX,     b: KIND_WAX },
+  { c: 17, a: KIND_GLITTER, b: KIND_PRESS },
+  { c: 20, a: KIND_WAX,     b: KIND_SCENT },
+  { c: 23, a: KIND_WAX,     b: KIND_WAX },
+  { c: 26, a: KIND_PRESS,   b: KIND_ROTATE },
+  { c: 29, a: KIND_WRAP,    b: KIND_GLITTER },
+  { c: 32, a: KIND_WAX,     b: KIND_WRAP },
 ];
 const slotFor = (c) => STATION_SLOTS.find((x) => x.c === c) || null;
 
@@ -499,6 +655,11 @@ const slotFor = (c) => STATION_SLOTS.find((x) => x.c === c) || null;
    advice ("dunk all of your candles in both") only means anything if they
    differ. */
 function makeHalf(kind, c, salt, avoid) {
+  /* The Scent Shop has to be bought before its station appears on the runway -
+     that is the reference's progression model, where money buys stations
+     rather than percentages. Until then the slot falls back to a wax pool, so
+     the gantry is never half empty. */
+  if (kind === KIND_SCENT && !TU.hasScent(S.up)) kind = KIND_WAX;
   const h = { kind, wax: 0, mould: 0, wrap: 0, id: ++stationSeq };
   if (kind === KIND_WAX) {
     const pal = WORKSHOPS[run.workshop].waxes;
@@ -564,6 +725,23 @@ function spawnChunk(c) {
     obstacles.push({
       kind: 'saw', x: TU.laneX(hash(c, 800 + S.level)),
       z: z + 4 + hash(c, 805) * 4, hit: false, spin: 0, w: 0.9,
+    });
+  }
+  /* The sweeper slides, and its position is a function of `run.z` rather than
+     of elapsed time. The same thing at a constant speed - and unlike a clock it
+     is reproducible, so the golden still holds. Anything that decides *when* is
+     simulation, and a moving obstacle decides when more than anything else on
+     the runway does. */
+  if (c >= 12 && hash(c, 860 + S.level) < T.sweeperChance * dens) {
+    obstacles.push({
+      /* `w` is the collision half-width and it is DELIBERATELY under the
+         drawn half-width of 1.5: a bar this wide swinging this far leaves a
+         gap of 1.5 units at its worst, and the standard tolerance of 0.34 on
+         top of a true half-width closed that gap entirely. A moving obstacle
+         with no gap is not an obstacle, it is a tax. */
+      kind: 'sweeper', x: 0, z: z + 4 + hash(c, 865) * 5, hit: false, spin: 0,
+      w: 1.15, amp: T.laneClamp * 0.55, phase: hash(c, 870) * 6.28,
+      dir: hash(c, 875) > 0.5 ? 1 : -1,
     });
   }
 
@@ -715,41 +893,55 @@ const popAt = (text, color, z) => pop(text, color, run.x, 2.9, z);
 // ─────────────────────────────────────────────────────────────────────────────
 // THE WORKSHOP — stat upgrades between levels, as the reference does it
 // ─────────────────────────────────────────────────────────────────────────────
+/* The shop, and it is a list of SHOPS rather than a list of stats.
+
+   The reference ends a run by driving between panels beside the track - SCENT
+   SHOP $4,000, ONLINE SHOP $1,000, LUXURY SHOP - each with a green plus. The
+   observed names and both observed prices are used as-is; the rest follow the
+   same shape. THE SCENT SHOP is the important one, because it buys a whole new
+   station rather than a number, which is what "extra stations like the
+   boutique" means in that game's reviews. */
 const UPGRADES = [
   { g: 'THE LINE', id: 'stack', ic: '🕯️', name: () => 'Bigger Batch',
     eff: () => 'Start every level with ' + (startCandles() + 2) + ' candles',
     cost: () => Math.round(90 * Math.pow(1.95, S.up.stack)), max: 10, unlock: 1 },
-  { g: 'THE LINE', id: 'earn', ic: '💰', name: () => 'Earning Power',
-    eff: () => 'Every sale pays +' + Math.round((S.up.earn + 1) * 14) + '%',
-    cost: () => Math.round(120 * Math.pow(2.05, S.up.earn)), max: 10, unlock: 1 },
   { g: 'THE LINE', id: 'grip', ic: '🛡️', name: () => 'Steady Tray',
     eff: () => 'A barrier takes ' + TU.obstacleTake(T.barrierTake, { ...S.up, grip: S.up.grip + 1 }) +
                ' candles, not ' + takeOf(T.barrierTake),
     cost: () => Math.round(150 * Math.pow(2.1, S.up.grip)), max: 8, unlock: 1 },
   { g: 'THE LINE', id: 'reach', ic: '🧲', name: () => 'Long Reach',
-    eff: () => 'Sweep banknotes in from further out',
-    cost: () => Math.round(110 * Math.pow(2.0, S.up.reach)), max: 8, unlock: 2 },
+    eff: () => 'Sweep loose candles and money in from further out',
+    cost: () => Math.round(110 * Math.pow(2.0, S.up.reach)), max: 8, unlock: 1 },
 
-  { g: 'THE STATIONS', id: 'vat', ic: '🎨', name: () => 'Deeper Vats',
-    eff: () => 'A wax vat lays ' + TU.vatLayers({ ...S.up, vat: S.up.vat + 1 }) + ' band(s) in one pass',
-    cost: () => Math.round(260 * Math.pow(2.4, S.up.vat)), max: 9, unlock: 2 },
-  { g: 'THE STATIONS', id: 'spark', ic: '✨', name: () => 'Glitter Cannon',
-    eff: () => 'Glitter applies ' + TU.glitterPer({ ...S.up, spark: S.up.spark + 1 }) + ' coat(s)',
-    cost: () => Math.round(240 * Math.pow(2.35, S.up.spark)), max: 9, unlock: 3 },
-  { g: 'THE STATIONS', id: 'press', ic: '⭐',
-    name: () => 'Press: ' + MOULDS[TU.bestMould({ ...S.up, press: S.up.press + 1 })].n,
+  { g: 'THE SHOPS', id: 'earn', ic: '💻', name: () => 'Online Shop',
+    eff: () => 'Every sale pays +' + Math.round((S.up.earn + 1) * 14) + '%',
+    cost: () => Math.round(1000 * Math.pow(2.1, S.up.earn)), max: 10, unlock: 1 },
+  { g: 'THE SHOPS', id: 'scent', ic: '🌸', name: () => 'Scent Shop',
+    eff: () => S.up.scent > 0
+      ? 'A SCENT station runs on every level'
+      : 'Adds a SCENT station to the line — x' + (1 + T.scentValue).toFixed(2) + ' a candle',
+    cost: () => 4000, max: 1, unlock: 2 },
+  { g: 'THE SHOPS', id: 'press', ic: '⭐',
+    name: () => 'Boutique: ' + MOULDS[TU.bestMould({ ...S.up, press: S.up.press + 1 })].n,
     eff: () => S.up.press >= TU.MAX_PRESS
       ? 'The finest mould on the line'
       : 'x' + MOULDS[TU.bestMould({ ...S.up, press: S.up.press + 1 })].mul.toFixed(2) +
         ' a candle, and a new shape',
-    cost: () => Math.round(420 * Math.pow(3.0, S.up.press)), max: TU.MAX_PRESS, unlock: 2 },
-  { g: 'THE STATIONS', id: 'wrap', ic: '🎀',
-    name: () => 'Wrap: ' + WRAPS[TU.bestWrap({ ...S.up, wrap: S.up.wrap + 1 })].n,
+    cost: () => Math.round(2500 * Math.pow(3.0, S.up.press)), max: TU.MAX_PRESS, unlock: 2 },
+  { g: 'THE SHOPS', id: 'wrap', ic: '🎀',
+    name: () => 'Luxury Shop: ' + WRAPS[TU.bestWrap({ ...S.up, wrap: S.up.wrap + 1 })].n,
     eff: () => S.up.wrap >= TU.MAX_WRAP
       ? 'The finest wrapping in the boutique'
       : 'x' + WRAPS[TU.bestWrap({ ...S.up, wrap: S.up.wrap + 1 })].mul.toFixed(2) +
-        ' a candle at the last station',
-    cost: () => Math.round(520 * Math.pow(3.1, S.up.wrap)), max: TU.MAX_WRAP, unlock: 3 },
+        ' a candle at the wrap station',
+    cost: () => Math.round(3500 * Math.pow(3.1, S.up.wrap)), max: TU.MAX_WRAP, unlock: 3 },
+
+  { g: 'THE STATIONS', id: 'vat', ic: '🎨', name: () => 'Deeper Vats',
+    eff: () => 'A wax pool lays ' + TU.vatLayers({ ...S.up, vat: S.up.vat + 1 }) + ' band(s) in one pass',
+    cost: () => Math.round(260 * Math.pow(2.4, S.up.vat)), max: 9, unlock: 2 },
+  { g: 'THE STATIONS', id: 'spark', ic: '✨', name: () => 'Glitter Cannon',
+    eff: () => 'Glitter applies ' + TU.glitterPer({ ...S.up, spark: S.up.spark + 1 }) + ' coat(s)',
+    cost: () => Math.round(240 * Math.pow(2.35, S.up.spark)), max: 9, unlock: 2 },
 ];
 
 function openShop(title, sub) {
@@ -876,8 +1068,31 @@ function renderResult(a) {
     ['MOLDED', st.pressed + ' of ' + st.count, ''],
     ['WRAPPED', st.wrapped + ' of ' + st.count, ''],
   ];
+  if (st.scented > 0) rows.push(['SCENTED', st.scented + ' of ' + st.count, '']);
   if (st.plain > 0) rows.push(['UNTOUCHED', st.plain + ' plain candle' + (st.plain === 1 ? '' : 's'), '']);
   if (a.cash > 0) rows.push(['PICKED UP', 'banknotes', '$' + fmt(Math.round(a.cash))]);
+  /* The gauge, which is the reference's end-of-run moment: a numeric scale
+     with the run's value rising up it. Calibrated on `par` so the ticks mean
+     the same thing at every level - the same tray always fills it the same
+     amount, however much money that level happens to pay. */
+  const target = T.par * priceMul();
+  const full = target * T.gaugeMax;
+  const frac = clamp(a.value / full, 0, 1);
+  const ticks = [];
+  for (let i = 1; i <= T.gaugeTicks; i++) {
+    const f = i / (T.gaugeTicks + 1);
+    ticks.push(`<i style="bottom:${(f * 100).toFixed(1)}%">${fmt(Math.round(full * f))}</i>`);
+  }
+  $('gaugeTicks').innerHTML = ticks.join('');
+  /* Set from zero on the next frame so the bar animates up rather than
+     appearing already full. */
+  $('gaugeFill').style.height = '0%';
+  $('gaugeMark').style.bottom = '0%';
+  setTimeout(() => {
+    $('gaugeFill').style.height = (frac * 100).toFixed(1) + '%';
+    $('gaugeMark').style.bottom = (frac * 100).toFixed(1) + '%';
+  }, 60);
+
   $('rStars').innerHTML = [0, 1, 2].map((i) => `<i class="${i < a.stars ? 'on' : ''}">★</i>`).join('');
   $('rRows').innerHTML = rows.map((x) =>
     `<div class="rrow"><span class="rk">${x[0]}</span><span class="rd">${x[1]}</span><span class="rv">${x[2]}</span></div>`
@@ -1013,6 +1228,22 @@ function updatePools(n) {
     if (Math.abs(st.z - run.z) > T.poolLen + 30) continue;
 
     const z0 = st.z - T.poolLen / 2, z1 = st.z + T.poolLen / 2;
+
+    /* ROTATE is not a pool: it turns the whole loaf, once, as the leader
+       crosses the plate. Handled here rather than in `apply` because it acts
+       on the tray and not on a candle. */
+    for (const h of [st.left, st.right]) {
+      if (h.kind !== KIND_ROTATE || h.done) continue;
+      const onIt = Math.abs(run.z - st.z) < 1.2 &&
+        ((h === st.left && run.x < 0) || (h === st.right && run.x >= 0));
+      if (!onIt) continue;
+      h.done = true;
+      TR.rotate(run.tray);
+      popAt('ROTATE', '#ffffff', st.z);
+      emit(run.x, 0.8, st.z, 22, 0xffffff, 2.2, 5);
+      sfx.press(); shake(0.4); flash(0.16);
+    }
+
     for (let k = 0; k < n; k++) {
       const p = stackPos[k];
       if (p.z < z0 || p.z > z1) continue;
@@ -1054,6 +1285,10 @@ function updateObstacles(dt, n) {
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const o = obstacles[i];
     o.spin += dt * (o.kind === 'saw' ? 9 : 2.4);
+    /* Set BEFORE the culling returns below, because the renderer reads o.x and
+       a sweeper that only moved while it was collidable would visibly jump the
+       moment it stopped being one. */
+    if (o.kind === 'sweeper') o.x = o.amp * Math.sin(o.phase + run.z * 0.26 * o.dir);
     /* Kept alive exactly as long as the tail still has to clear them. */
     if (o.z < run.z - (ST.backFor(count() - 1) + 3)) { obstacles.splice(i, 1); continue; }
     if (o.hit || o.z > run.z + 4) continue;
@@ -1066,7 +1301,9 @@ function updateObstacles(dt, n) {
     if (!struck) continue;
 
     o.hit = true;
-    const base = o.kind === 'barrier' ? T.barrierTake : o.kind === 'roller' ? T.rollerTake : T.sawTake;
+    const base = o.kind === 'barrier' ? T.barrierTake
+      : o.kind === 'roller' ? T.rollerTake
+      : o.kind === 'sweeper' ? T.sweeperTake : T.sawTake;
     const lost = TR.shrink(run.tray, takeOf(base));
     run.lost += lost;
     if (lost > 0) {
@@ -1177,11 +1414,46 @@ function buildClouds() {
   }
 }
 
+/* Stacked-cylinder towers, well below the track and far to the sides. Rebuilt
+   in windows like the clouds, because the alternative is holding a whole
+   level of scenery for the sake of the eight towers on screen. Cosmetic, so it
+   may draw from hash() without being part of the simulation - but hash keeps it
+   stable as the camera moves back and forth, which Math.random would not. */
+function buildSkyline() {
+  const c0 = Math.floor(run.z / 60) - 1;
+  if (c0 === run.lastSkyWindow) return;
+  run.lastSkyWindow = c0;
+  towers.length = 0;
+  for (let c = c0; c < c0 + 6; c++) {
+    for (let k = 0; k < 3; k++) {
+      const side = hash(c, 3100 + k) > 0.5 ? 1 : -1;
+      towers.push({
+        x: side * (15 + hash(c, 3110 + k) * 24),
+        y: -13 - hash(c, 3115 + k) * 7,
+        z: c * 60 + hash(c, 3120 + k) * 60,
+        s: 1.5 + hash(c, 3130 + k) * 1.5,
+        n: 2 + Math.floor(hash(c, 3140 + k) * 3.4),
+      });
+    }
+  }
+}
+
 /* The stack: one instance per band per candle, all in the layer whose geometry
    matches the pressed mould. */
+/* The tray, drawn as ONE LONG LOAF lying along the runway.
+
+   Each candle lies ACROSS the lane with its bands running along its length and
+   its gold tip poking out of the left edge of the loaf, packed tight against
+   its neighbours. That silhouette is the reference's, and it is what makes the
+   per-candle colours readable: you look down the top faces of thirty candles
+   receding away, so a tray that wove through two pools is visibly striped in
+   two colours and one that held a line is not.
+
+   Two builds drew upright candles instead. Upright, three abreast, the tray
+   was a hedge - you saw the front row and nothing else. */
 function writeStack() {
   for (const L of C.band) L.reset();
-  C.wick.reset(); C.ribbon.reset();
+  C.wick.reset(); C.ribbon.reset(); C.bow.reset(); C.spark.reset();
   let fN = 0;
 
   const n = ST.layout(run.trail, count(), stackPos);
@@ -1191,60 +1463,77 @@ function writeStack() {
     const r = run.tray[i];
     if (!r) continue;
     const p = stackPos[i];
-    /* Every candle is drawn from its OWN recipe, which is the visible payoff
-       of per-candle state: a tray that wove through both pools is visibly
-       striped in two colours, and one that held a line is not. */
     const band = C.band[r.mould];
-    const rad = CD.radii(r), ys = CD.bandYs(r);
-    const bh = CD.bandHeight(r), topY = CD.candleHeight(r);
+    const rad = CD.radii(r), xs = CD.bandYs(r);
+    const bh = CD.bandHeight(r), len = CD.candleHeight(r);
+    const wrapped = r.wrap > 0;
 
-    const bob = Math.sin(run.time * 6 - i * 0.55) * 0.045;
-    const spin = run.time * 0.5 + i * 0.7;
-    Q.setFromAxisAngle(V.set(0, 1, 0), spin);
+    /* Lying down: the band cylinders run along X. A gentle bob keeps a long
+       loaf from reading as one rigid object; keyed on index and time, never
+       random, so it does not jitter. */
+    const bob = Math.sin(run.time * 5 - i * 0.4) * 0.03;
+    QT.setFromAxisAngle(V.set(0, 0, 1), Math.PI / 2);
 
-    for (let b = 0; b < r.layers.length; b++) {
-      M2.compose(V2.set(p.x, ys[b] + bob, p.z), Q, V.set(rad[b] * 2, bh, rad[b] * 2));
-      /* Glitter reads as the band being lifted toward white, which is what a
-         coat of sparkle does to a colour at arm's length. */
-      CTMP.setHex(WAXES[r.layers[b]].col);
-      if (r.glitter > 0) CTMP.lerp(WHITE, 0.11 * r.glitter);
-      band.push(M2, CTMP);
+    if (wrapped) {
+      /* After WRAP the candle is a wrapped present, which is exactly what the
+         reference's loaf turns into at its gift station. */
+      const w = WRAPS[r.wrap];
+      const bw = len * 0.92, bh2 = rad[0] * 2.1;
+      M2.compose(V2.set(p.x, bh2 * 0.5 + bob, p.z), QT.identity(), V.set(bw, bh2, T.trailGap * 0.94));
+      C.ribbon.push(M2, CTMP.setHex(w.col));
+      M2.compose(V2.set(p.x, bh2 + 0.06 + bob, p.z), QT.identity(), V.set(bw * 0.18, 0.16, T.trailGap * 1.02));
+      C.bow.push(M2, CTMP.setHex(w.bow));
+    } else {
+      for (let b = 0; b < r.layers.length; b++) {
+        const off = xs[b] - len / 2;
+        M2.compose(V2.set(p.x + off, rad[b] + bob, p.z), QT, V.set(rad[b] * 2, bh, rad[b] * 2));
+        CTMP.setHex(WAXES[r.layers[b]].col);
+        if (r.glitter > 0) CTMP.lerp(WHITE, 0.10 * r.glitter);
+        if (r.scent > 0) CTMP.lerp(SCENTC, 0.16);
+        band.push(M2, CTMP);
+      }
+      /* The gold tip, poking out of the left edge of the loaf AS THE PLAYER
+         SEES IT. World +x is screen left here - the camera looks along +z, so
+         it is turned 180 degrees about Y - which is why this is a plus. */
+      QT2.setFromAxisAngle(V.set(0, 0, 1), -Math.PI / 2);
+      M2.compose(V2.set(p.x + len / 2 + T.wickH * 0.5, rad[0] + bob, p.z), QT2,
+        V.set(rad[0] * 1.5, T.wickH, rad[0] * 1.5));
+      C.wick.push(M2);
     }
 
-    const top = topY + bob;
-    M2.compose(V2.set(p.x, top + T.wickH / 2, p.z), QT.identity(), V.set(1, T.wickH, 1));
-    C.wick.push(M2);
-
-    if (r.wrap > 0) {
-      const rr = rad[0] * 2.35;
-      M2.compose(V2.set(p.x, topY * 0.45 + bob, p.z), Q, V.set(rr, 1, rr));
-      C.ribbon.push(M2, CTMP.setHex(WRAPS[r.wrap].col));
+    /* Glitter reads as specks sitting on the top of the loaf, not only as a
+       lightened colour - the reference's sparkle is visibly ON the wax. */
+    if (r.glitter > 0 && (i % 2 === 0)) {
+      const sx = p.x + ((i * 37) % 13 - 6) * 0.13;
+      M2.compose(V2.set(sx, rad[0] * 2 + 0.05 + bob, p.z), QT.identity(),
+        V.set(0.09, 0.09, 0.09));
+      C.spark.push(M2, CTMP.setHex(0xffffff));
     }
 
-    QT.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
-    const sr = rad[0] * 2.6;
-    M2.compose(V2.set(p.x, 0.03, p.z), QT, V.set(sr, sr, 1));
+    QT2.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
+    M2.compose(V2.set(p.x, 0.03, p.z), QT2, V.set(len * 1.05, T.trailGap * 1.6, 1));
     W.shadow.push(M2);
 
-    /* Lit only at the gift table, one at a time as the payout counts up. */
-    if (lit && i < Math.floor(run.giftT * 9)) {
-      const fs = 0.34 + Math.sin(run.time * 19 + i) * 0.03;
-      M2.compose(V2.set(p.x, top + T.wickH + fs * 0.85, p.z), QT.identity(), V.set(fs, fs * 2.1, fs));
+    if (lit && i < Math.floor(run.giftT * 11)) {
+      const fs = 0.3 + Math.sin(run.time * 19 + i) * 0.03;
+      const ty = (wrapped ? rad[0] * 2.1 : rad[0] * 2) + 0.2;
+      M2.compose(V2.set(p.x + len / 2 - 0.2, ty + fs, p.z), QT2.identity(), V.set(fs, fs * 2.0, fs));
       flames.setMatrixAt(fN, M2);
-      M2.compose(V2.set(p.x, top + T.wickH + fs * 0.6, p.z), QT.identity(), V.set(fs * 0.55, fs * 1.15, fs * 0.55));
+      M2.compose(V2.set(p.x + len / 2 - 0.2, ty + fs * 0.8, p.z), QT2.identity(),
+        V.set(fs * 0.55, fs * 1.1, fs * 0.55));
       flameCores.setMatrixAt(fN, M2);
       fN++;
     }
   }
 
   for (const L of C.band) L.flush();
-  C.wick.flush(); C.ribbon.flush();
+  C.wick.flush(); C.ribbon.flush(); C.bow.flush(); C.spark.flush();
   flames.count = flameCores.count = fN;
   flames.instanceMatrix.needsUpdate = true;
   flameCores.instanceMatrix.needsUpdate = true;
   if (fN > 0) {
-    giftLight.position.set(run.x, 2.4, run.z + 1.5);
-    giftLight.intensity = 6 + fN * 3.2;
+    giftLight.position.set(run.x, 2.0, run.z + 1.0);
+    giftLight.intensity = 6 + fN * 2.6;
   } else {
     giftLight.intensity = 0;
   }
@@ -1263,6 +1552,21 @@ function writeWorld() {
       M2.makeTranslation((s ? 1 : -1) * (T.roadW / 2 + 0.1), 0.36, z);
       W.rail.push(M2);
     }
+  }
+
+  buildSkyline();
+  for (const t of towers) {
+    let y = t.y;
+    for (let k = 0; k < t.n; k++) {
+      /* Each drum a little narrower than the one under it, which is what makes
+         a plain cylinder stack read as a candle rather than as a chimney. */
+      const r = t.s * (1 - k * 0.13), h = t.s * (1.5 + (k % 2) * 0.5);
+      M2.compose(V2.set(t.x, y + h / 2, t.z), QT.identity(), V.set(r, h, r));
+      W.tower.push(M2);
+      y += h;
+    }
+    M2.compose(V2.set(t.x, y + t.s * 0.5, t.z), QT.identity(), V.set(t.s, t.s, t.s));
+    W.towerTip.push(M2);
   }
 
   buildClouds();
@@ -1318,6 +1622,18 @@ function writeWorld() {
         M2.compose(V2.set(o.x + k * 0.95, 0.55, o.z), QT, ONE);
         W.roller.push(M2);
       }
+    } else if (o.kind === 'sweeper') {
+      /* Angled about Y, so it is a diagonal bar rather than a wall - the
+         difference between "you cannot pass" and "there is a way round it". */
+      const a = 0.30 * o.dir;
+      QT.setFromAxisAngle(V.set(0, 1, 0), a);
+      M2.compose(V2.set(o.x, 0.55, o.z), QT, ONE);
+      W.sweeper.push(M2);
+      for (let k = 0; k < 4; k++) {
+        const t = (k - 1.5) * 0.66;
+        M2.compose(V2.set(o.x + t * Math.cos(a), 0.55, o.z - t * Math.sin(a)), QT, ONE);
+        W.sweepMark.push(M2);
+      }
     } else {
       QT.setFromAxisAngle(V.set(0, 0, 1), Math.PI / 2)
         .premultiply(new THREE.Quaternion().setFromAxisAngle(V.set(1, 0, 0), o.spin));
@@ -1328,12 +1644,16 @@ function writeWorld() {
     }
   }
 
-  // the gift table at the end of the runway
+  /* The display counter, moved WELL past the finish line. It used to sit two
+     units beyond it, which put a six-metre white slab directly between the
+     end-of-run camera and the thing it was framing: the shot was mostly table
+     corner. The rule this is an instance of - a prop placed relative to where
+     the player STOPS has to clear where the camera goes when they stop. */
   if (BENCH_Z - run.z < 150) {
-    M2.compose(V2.set(0, 1.25, BENCH_Z + 2.5), QT.identity(), ONE);
+    M2.compose(V2.set(0, 1.25, BENCH_Z + 15), QT.identity(), V.set(1.5, 1, 1.6));
     W.bench.push(M2);
     for (let i = 0; i < 4; i++) {
-      M2.compose(V2.set((i % 2 ? 1 : -1) * 2.8, 0.65, BENCH_Z + (i < 2 ? 1.8 : 3.2)), QT.identity(), ONE);
+      M2.compose(V2.set((i % 2 ? 1 : -1) * 4.2, 0.65, BENCH_Z + (i < 2 ? 14 : 16)), QT.identity(), ONE);
       W.benchLeg.push(M2);
     }
   }
@@ -1425,10 +1745,15 @@ function tick(dt, draw = true) {
        camera inside it and the player sees three candles at the moment they
        are supposed to be admiring twenty-seven. The pull-back scales with how
        many rows there actually are. */
+    /* Stay BEHIND the loaf and swing out to one side, rather than getting in
+       front of it. In front means the camera crosses the finish line, and
+       everything the level put beyond the finish line - the counter, the shop
+       fronts - ends up between the lens and the candles. Behind, the loaf
+       recedes away from the camera and the shops are the backdrop. */
     const k = clamp(run.giftT * 0.5, 0, 1);
-    const depth = clamp(ST.backFor(count() - 1), 2, 12);
-    camPos.set(run.x + (7.0 + depth * 0.35) * k, 3.4 + depth * 0.22,
-      run.z + (5.0 + depth * 0.45) * k + 2.0);
+    const depth = clamp(ST.backFor(count() - 1), 2, 14);
+    const mid = run.z - depth * 0.5;
+    camPos.set(run.x + 8.5 * k, 4.4 + depth * 0.18, mid - (11.0 + depth * 0.5));
   } else {
     /* The camera opens up as the stack lengthens.
 
@@ -1455,8 +1780,9 @@ function tick(dt, draw = true) {
     camera.position.x += (Math.random() - 0.5) * s;
     camera.position.y += (Math.random() - 0.5) * s;
   }
-  const giftMid = run.z - clamp(ST.backFor(count() - 1), 0, 12) * 0.5;
-  camLook.set(done ? run.x : run.x * 0.35, done ? 1.5 : 2.7, done ? giftMid : run.z + 12.0);
+  const giftMid = run.z - clamp(ST.backFor(count() - 1), 0, 14) * 0.2;
+  camLook.set(done ? run.x * 0.7 : run.x * 0.35, done ? 1.4 : 2.7,
+    done ? giftMid : run.z + 12.0);
   camera.lookAt(camLook);
   sun.position.set(camera.position.x - 8, camera.position.y + 16, camera.position.z - 6);
   sun.target.position.set(run.x, 0, run.z);

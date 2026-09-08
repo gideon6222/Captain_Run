@@ -49,6 +49,18 @@ export function shrink(t: Tray, n: number): number {
 
 export const cloneTray = (t: Tray): Tray => t.map(cloneRecipe);
 
+/* The ROTATE station: turn the whole loaf end for end.
+
+   Worth having because the tray is asymmetric in two ways that matter. New
+   candles join the BACK plain, and obstacles eat the BACK - so the back is
+   both the least finished and the most exposed. Turning the loaf swaps those:
+   your plain new candles come to the front where the next pools will catch
+   them first, and your best work moves to where it can be knocked off. A real
+   decision in one button, and it costs nothing to render. */
+export function rotate(t: Tray): void {
+  t.reverse();
+}
+
 // -- what the whole tray is worth ---------------------------------------------
 
 export const trayValue = (t: Tray): number => {
@@ -73,18 +85,20 @@ export interface TrayStats {
   avgGlitter: number;
   pressed: number;   // how many candles carry a mould better than plain
   wrapped: number;
+  scented: number;
   plain: number;     // candles that never got dipped in anything
   palette: number[]; // how many candles carry each wax, indexed by wax id
 }
 
 export function statsOf(t: Tray, waxCount: number): TrayStats {
   const palette = new Array(waxCount).fill(0);
-  let colours = 0, glitter = 0, pressed = 0, wrapped = 0, plain = 0;
+  let colours = 0, glitter = 0, pressed = 0, wrapped = 0, scented = 0, plain = 0;
   for (const r of t) {
     colours += colourCount(r);
     glitter += r.glitter;
     if (r.mould > 0) pressed++;
     if (r.wrap > 0) wrapped++;
+    if (r.scent > 0) scented++;
     if (r.layers.length <= 1 && r.glitter === 0 && r.mould === 0 && r.wrap === 0) plain++;
     const seen = new Set(r.layers);
     for (const w of seen) if (w < waxCount) palette[w]++;
@@ -94,6 +108,6 @@ export function statsOf(t: Tray, waxCount: number): TrayStats {
     count: t.length,
     avgColours: colours / n,
     avgGlitter: glitter / n,
-    pressed, wrapped, plain, palette,
+    pressed, wrapped, scented, plain, palette,
   };
 }

@@ -54,10 +54,14 @@ more than one that held a line, even though both crossed the same stations.
 
 ## The trailing tray is the game
 
-`stack.ts` keeps a ring buffer of where the leader has been. Row *r* sits `r × trailGap`
-back **along that recorded path**. Three candles abreast per row, so the tray is a tray and
-not a queue — single file was the first attempt and every candle hid behind the one in
-front, so a tray of twenty-six showed the player one candle's worth of colour.
+`stack.ts` keeps a ring buffer of where the leader has been. Candle *i* sits `i × trailGap`
+back **along that recorded path**.
+
+Single file, one candle per row — because **the candle is what is wide**. Each one lies
+*across* the lane, so you look down the top faces of a long loaf and every candle's colour is
+on screen at once. That is the reference's own answer to the readability problem, and it
+replaced three-abreast rows of upright candles, which solved the same problem by being three
+times as wide as the thing they were modelling.
 
 Obstacles test **every candle**, which is the entire point: swerve late and you clear the
 barrier yourself and drag the back half of your tray through it.
@@ -65,12 +69,14 @@ barrier yourself and drag the back half of your tray through it.
 ## Tuning as shipped
 
 - Runway 8.4 wide, steering clamped to ±3.0, 11.5 u/s, 34 chunks ≈ 37 s.
-- Tray starts at 8, caps at 27 (nine rows of three — a whole number of rows, so no row is
-  ever short).
-- Eight gantries at fixed chunks, each a **pair of pools** 11 units long: wax early and often,
-  glitter and press through the middle, wrap late and offered twice.
-- No gates. The tray grows only by collecting loose candles off the runway.
-- Barriers take 3 candles, rollers 2, saws 4, before the Steady Tray upgrade.
+- Slab starts at 8 candles, caps at 30, packed `trailGap` 0.62 apart along the path.
+- Ten stations at fixed chunks, each a **pair of pools** 11 units long: wax early and often,
+  glitter and press through the middle, rotate and wrap late, scent once it is bought.
+- No gates. The slab grows only by collecting loose candles off the runway.
+- Barriers take 3 candles, rollers 2, saws 4, the sweeper 3, before the Steady Tray upgrade.
+- The sweeper is the only obstacle that **moves**, and its position is a function of `run.z`
+  rather than of elapsed time — the same thing at a constant speed, and reproducible, so the
+  golden still holds.
 - Cream is the candle core and is never offered at a pool — a cream dip on a cream candle is
   a no-op, and a station that can do nothing teaches the player to stop reading signs.
 - Six waxes; prices span under 2×; contrast counts hue **or** lightness.
@@ -101,6 +107,26 @@ which candles get what. Everything else followed:
 Measured: weaving is worth **2.6× per candle** over driving straight through. Under the old
 shared-tray model all four scripted play styles produced the *same* per-candle value.
 
+## The accuracy pass (v4.0.0) — building from the video instead of from inference
+
+Gideon sent a gameplay video and asked for the base game to match it before improving on it.
+`REFERENCE.md` is the observed record that came out of watching it; this is what changed.
+
+- **The player object lies down.** One long slab of candles packed side by side across the
+  lane with gold tips down one edge, not a crowd of upright candles. It grows lengthwise.
+- **The white workshop** under a **flat** cyan sky. Not a gradient: a sky fading to near-white
+  at the horizon put a white runway against a white backdrop at exactly the distance you steer
+  by — the same failure as the pink-on-pink theme, caught by the same unit test.
+- **ROTATE**, a white plate with a curved arrow that turns the slab end for end. It acts on
+  the tray rather than on a candle, so it is the one station whose `apply` does nothing and
+  `updatePools` handles as a special case.
+- **SCENT**, and it is a *station you buy*, not a percentage. That is the reference's whole
+  progression model — the shop panels beside its track add stations.
+- **The sweeper**, an orange bar with dark blue chevrons sliding across the lane.
+- **A value gauge** with a numeric scale at the end of a run, drawn from `par`.
+- **Stacked-candle towers** below the track, and **shop fronts** either side past the finish.
+- **Fredoka**, self-hosted, 30 KB — the single highest-return asset import in the game.
+
 ## What this build got wrong first, and what fixed it
 
 Recorded because each one is cheap to reintroduce.
@@ -122,6 +148,21 @@ Recorded because each one is cheap to reintroduce.
 10. **CREAM was a pool colour and also the candle core**, so a third of the dips were no-ops.
 11. **`touch-action: none` on body** stopped the shop scrolling on a phone — a hard blocker,
     since START sat below the upgrade list. Reported by Gideon.
+12. **The gift table was two units past the finish line**, and the end-of-run camera swung
+    *forward* past that line to look back at the slab — so a six-metre white slab sat between
+    the lens and the thing being framed. A prop placed relative to where the player *stops*
+    has to clear where the camera goes when they stop.
+13. **A par measured with a throwaway bot.** An ad-hoc policy written in the browser console,
+    with a slightly longer lookahead than the one in the repo, scored 64,606 where the repo's
+    own `playLevel` scores 39,134 — and par went in 44% too high. A bot is a definition of
+    "playing well"; measure against the one anybody can re-run.
+14. **Two policies compared across two different levels.** `freeze()` restarts the level but
+    leaves `S.level` alone, and every layout decision is keyed on it, so the headline
+    weaving-versus-gathering test was comparing two unrelated runways. Level 2 is a bad draw:
+    the same bot loses 22 candles there against 6 on level 1.
+15. **A sweeper with no gap.** At its drawn half-width plus the standard 0.34 tolerance it
+    covered 61% of the steerable band at every point in its swing. A moving obstacle with no
+    gap is not an obstacle, it is a tax.
 
 ## Known gaps / next
 
@@ -133,19 +174,22 @@ Recorded because each one is cheap to reintroduce.
    and screenshots. Unverified: whether weaving feels good or fiddly at speed, whether the
    drag sensitivity is right, whether a full tray feels heavy in the good way, and whether
    the audio is pleasant.
-3. **The 1-vs-2 star boundary is fragile** — idling and gathering score within 4% of each
-   other, because the magnet collects pickups almost by itself. Shrinking the magnet or
-   scattering pickups wider would separate them.
-2. **Balance past level 1 is modelled, not played.** The four scripted runs that set `par`
-   were all level 1 with no upgrades.
-3. **Stations are the draw-call cost** — three pooled gantries of nine meshes each is most of
-   the 45–65. Instancing the posts and vats would roughly halve it. Not urgent at 65 against
-   a ~100 mobile guideline, but it is the first thing to do if a later workshop adds props.
-4. **The gift table is a box with legs.** It is the last thing the player looks at every
-   level. `ASSETS.md`'s "stationary, close to the camera, looked at while nothing else is
-   happening" exception genuinely applies here.
-5. **No per-workshop mechanics.** The four differ in palette and wax choice only. The
+3. **`dodge` now out-scores `gather`** — 18,158 against 14,048. Both are one-dimensional
+   policies so the ordering between them does not matter for `par`, but it says the pickup
+   line is not worth the candles it costs to chase. Scattering banknotes closer to the racing
+   line, or making `guardedCash` rarer, would fix it.
+4. **Balance past level 1 is modelled, not played**, and level 2 is measurably a bad draw:
+   the weaving bot brings home 29 candles on level 1 and 14 on level 2, purely from layout.
+   Layouts want a floor — a minimum gap between obstacles, or a cap on how much of a chunk
+   can be hazard.
+5. **Stations are the draw-call cost** — three pooled gantries of about twelve visible meshes
+   each is most of the 26–85. Instancing the arms, posts and pools would roughly halve it.
+   Not urgent at 85 against a ~100 mobile guideline, but it is the first thing to do if a
+   later workshop adds props.
+6. **The shop fronts are scenery.** The reference lets you buy from them in the track, with a
+   green `+` on each panel. Ours draw the panels and open a sheet instead.
+7. **No per-workshop mechanics.** The four differ in palette and wax choice only. The
    reference has themed stations; the hooks are all in `WORKSHOPS`.
-6. **The stack cap is 27 and a good run hits it**, so the count axis tops out. Either raise
-   the cap with a wider tray, or make late gates multiplicative against a rising obstacle
-   toll so holding the cap is the challenge.
+8. **The cap is 30 and a good run hits it**, so the count axis tops out. Either raise the cap
+   or make the late stations multiplicative against a rising obstacle toll, so *holding* the
+   cap is the challenge.

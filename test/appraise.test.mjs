@@ -92,9 +92,14 @@ test('stars describe the tray, not the level it was sold in', () => {
 });
 
 test('all four star ratings are reachable', () => {
+  /* The sweep has to reach as far as a good run actually does, or it decides
+     `par` by accident: it used to top out at 27 candles and three dips, which
+     is short of the 30 candles and ~3.8 colours a weaving bot brings home, so
+     raising par to the measured number made three stars look unreachable when
+     it was only unreachable *inside the sweep*. */
   const seen = new Set();
-  for (const n of [0, 2, 6, 12, 20, 27]) {
-    for (const dips of [0, 1, 2, 3]) {
+  for (const n of [0, 2, 6, 12, 20, T.maxCandles]) {
+    for (const dips of [0, 1, 2, 3, 5, T.maxLayers]) {
       for (const m of [0, MOULDS.length - 1]) {
         for (const w of [0, WRAPS.length - 1]) {
           const cols = [AQUA, GUM, MINT, SUN];

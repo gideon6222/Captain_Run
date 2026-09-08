@@ -2,9 +2,10 @@
    it. Pure: nothing here reads live state, so each function takes the upgrade
    table and whatever run-scoped value it needs as an argument.
 
-   That shape is deliberate. These are the numbers a balance change moves, and
-   a function that reads a module-level `S` and `run` cannot be checked without
-   booting the whole game. */
+   `REFERENCE.md` is the observed record of the game this is modelled on. Where
+   a number here has a shape rather than a value - the tray lying down, the
+   pools being half-width, the shops replacing stat upgrades - that file says
+   why. */
 
 import { clamp } from './util.js';
 
@@ -16,143 +17,105 @@ export const T = {
   chunk: 12,
   levelChunks: 34,
 
-  /* THE STACK.
+  /* THE TRAY, and it LIES DOWN.
 
-     Candles trail the leader along its own recorded path, like a snake, rather
-     than clumping around it like a crowd. That is the mechanic the reference
-     game is built on, and its strategy guide names the consequence exactly:
-     as the stack gets longer you have to start steering *well before* an
-     obstacle is in reach, because the back of the line is still going where
-     the front went a second ago. Growing the stack is therefore a genuine
-     trade - more candles is more money and less agility - rather than a number
-     that only ever goes up. */
+     The reference's player object is one long loaf of candles lying flat along
+     the track, packed side by side with their gold tips poking out one edge -
+     not a crowd of upright candles. It grows lengthwise, which is what its
+     strategy guide means by "as your candle stack gets longer... you need to
+     start moving well before an obstacle is in reach".
+
+     So one candle per row and each candle spans most of the lane. A wide, low
+     loaf reads its colours off the top faces receding from the camera, which
+     is how the reference solves the readability problem that three-abreast
+     upright candles were solving before. */
   startCandles: 8,
-  maxCandles: 27,        // what the renderer draws, so the HUD count never lies
-  /* Three abreast, in rows that trail the leader.
-
-     Single file was the first attempt and it is unreadable: every candle hides
-     behind the one in front, so a tray of twenty-six showed the player one
-     candle's worth of colour. Three across shows the banding, reads as a tray
-     of goods rather than a queue, and still lags exactly the same way - it is
-     the *row* that follows the path, so the back of the tray is still going
-     where the front went a second ago. */
-  rowWidth: 3,
-  rowGap: 0.66,          // lateral spacing within a row
-  trailGap: 0.98,        // spacing between rows along the recorded path
-  /* The path-history ring buffer, and it is sized against the WORST case, not
-     the usual one. At running speed a frame advances ~0.19 units so 4000
-     samples remember 760 units, but `push` drops steps under 0.02, so the
-     floor is 80 units - still comfortably past the 24 the longest stack asks
-     for. Undersized, the tail silently bunches at the oldest sample, which
-     looks like the stack collapsing for no reason. Three Float64Arrays at this
-     length is 96 KB against a measured 22 MB heap: memory is not a constraint
-     on this hardware and should not be treated as one. */
+  maxCandles: 30,
+  rowWidth: 1,
+  rowGap: 0,
+  trailGap: 0.62,        // how tightly the loaf packs along the runway
   trailSamples: 4000,
 
-  /* Per-candle geometry. A candle is a stack of dipped colour layers, and its
-     radius grows with the square root of accumulated area, so the eighth dip
-     widens it far less than the second. Without that a full run ends with tree
-     trunks on the tray. */
-  /* Tall and narrow, roughly 4:1.
+  /* One candle, lying across the lane. `candleHeight` is its LENGTH and the
+     bands run along it - the reference's screenshots show a candle in a wax
+     pool striped along its length, which is the shape this produces. */
+  coreR: 0.30,
+  rPerLayer: 0.045,
+  coreH: 1.9,            // length across the lane
+  hPerLayer: 0.10,
+  wickH: 0.30,           // the gold tip that pokes out of the loaf
 
-     The bands are horizontal, so height is the axis they are read along, and a
-     squat candle hides them: at 1.3 units tall with three bands the camera -
-     which looks down the runway from above - saw mostly the top band and the
-     whole tray read as one colour. Height is also the only axis that grows
-     much with dips, so it is what "more work" looks like from a distance. */
-  coreR: 0.26,
-  rPerLayer: 0.050,
-  coreH: 1.55,
-  hPerLayer: 0.16,
-  wickH: 0.26,
-
-  /* Stations treat the WHOLE stack at once, so count and quality are
-     independent axes: obstacles take candles, stations make each candle worth
-     more. Two axes that never interfere is what keeps both readable. */
   maxLayers: 8,
 
-  /* Value. A finished candle is worth its material multiplied by everything
-     done to it - multiplied, never added. A flat bonus is decisive on a small
-     stack and a rounding error on a big one, so one of the two things the
-     player is doing would always be the wrong thing to think about. */
   perCandleBase: 9,
-  layerValue: 0.34,      // per wax layer, as a fraction
-  contrastValue: 0.30,   // per adjacent pair that reads as two colours
-  glitterValue: 0.26,    // per glitter pass
+  layerValue: 0.34,
+  contrastValue: 0.30,
+  glitterValue: 0.26,
+  scentValue: 0.55,      // the Scent Shop station, once bought
   maxGlitter: 3,
-
-  /* Obstacles take candles off the tail, and they take a lot.
-
-     Measured at 3/2/4: a scripted run that never touched the screen finished
-     with fourteen candles and earned three stars, because the gates hand out
-     more growth over a level than soft obstacles can claw back. The whole
-     spread between never steering and steering well was 1.3x, which means the
-     game was not really being played. These numbers are what make the tray
-     something you have to protect rather than something that accumulates. */
-  /* Rebalanced when growth changed shape.
-
-     At 5/3/6 these were tuned against x2 gates, which could double a tray in
-     one beat. Growth is now loose candles worth one each, so the same numbers
-     meant a single barrier took five of the six you start with and the early
-     runway was unrecoverable. Flat rather than proportional on purpose: the
-     player has to be able to look at a barrier and know what it costs. */
-  barrierTake: 3,
-  rollerTake: 2,
-  sawTake: 4,
-
-  cashPickup: 120,       // face value of a banknote on the runway, before scale
 
   /* Stations are POOLS ON THE GROUND, in pairs across the runway.
 
-     The reference's strategy guide is explicit: "if there are two pools of wax
-     side by side, you should swipe left and right quickly to try and dunk all
-     of your candles in both of the pools". A pool has to be long enough to
-     weave across and narrow enough that holding one line misses the other, or
-     there is nothing to weave. `poolLen` is measured against the tray: a full
-     tray is nine rows deep at `trailGap` apart, so a pool shorter than that
-     cannot get the whole tray in even standing still. */
+     "If there are two pools of wax side by side, you should swipe left and
+     right quickly to try and dunk all of your candles in both of the pools."
+     A pool has to be longer than the loaf is deep to matter, and each covers
+     half the width so one line misses the other. */
   poolLen: 11.0,
-  poolInset: 0.15,       // gap between the two pools, so the split reads
+  poolInset: 0.15,
 
-  /* Loose candles lying on the runway - the growth mechanic, straight off the
-     reference screenshot, where finished candles lie scattered on the track.
-     There are no +N / x2 gates in the reference; those were carried over from
-     the viking game this repo used to hold and they are gone. */
   looseWorth: 1,
   magnetBase: 2.0,
 
-  /* How often each seeded roll comes up. Named and gathered here rather than
-     left as bare numbers inside the spawn code, because that is exactly how
-     the first game on this stack ended up with three mechanics whose real odds
-     nobody could see. */
-  barrierChance: 0.42,
-  rollerChance: 0.30,
-  sawChance: 0.22,
+  /* Obstacles take candles off the back of the loaf. Flat rather than
+     proportional: the player has to be able to look at one and know the cost. */
+  barrierTake: 3,
+  rollerTake: 2,
+  sawTake: 4,
+  sweeperTake: 3,
+
+  cashPickup: 120,
+
+  barrierChance: 0.40,
+  rollerChance: 0.28,
+  sawChance: 0.20,
+  sweeperChance: 0.26,
   cashChance: 0.50,
   looseChance: 0.80,
-  guardedCash: 0.55,     // how often an obstacle is planted on the cash line
+  guardedCash: 0.55,
 
-  /* Stars are cut against par scaled by what the level pays, so three stars
-     means the same standard of work at the first workshop and the ninth.
+  /* The end of a run is a VERTICAL VALUE GAUGE with a numeric scale, not a
+     star rating - see REFERENCE.md. `par` is the value the gauge is calibrated
+     against; the ticks are drawn from it.
 
-     Measured, not chosen. Four scripted runs of level 1 with no upgrades:
-     never steering scores 8,103; dodging obstacles only 6,011; gathering
-     pickups 8,474; and *weaving the pools* - sweeping left and right through
-     each pair so different candles land in each - 20,404. Those land on
-     1 / 1 / 2 / 3 stars.
+     MEASURED, not chosen, and measured with a bot that lives in the repo:
+     `playLevel` in `e2e/smoke.spec.ts` plays a whole level under one of four
+     policies, and `par` is picked so they land on different ratings. Level one,
+     no upgrades:
 
-     The gap that matters is the last one: weaving is worth 2.6x per candle
-     over gathering ($884 against $342). Under the shared-tray model this
-     replaced, all four of those runs produced the same per-candle value.
+       idle    4,912  ($140 each)  - never steers            0 stars
+       dodge  18,158  ($680 each)  - only avoids hazards     1 star
+       gather 14,048  ($447 each)  - only chases pickups     1 star
+       weave  39,134 ($1,312 each) - dodges, sweeps both
+                                     pools, then collects    3 stars
 
-     The window is narrow - idling and gathering are only 4% apart, because the
-     magnet collects pickups almost by itself - so this number is fragile.
-     Re-measure whenever pool length, the magnet, obstacle damage or the craft
-     multipliers move. */
-  par: 13800,
+     Weaving is worth 9.4x idling per candle, which is the number that says the
+     pools are the game.
 
-  levelScale: 1.55,      // how much harder each workshop is
-  priceScale: 1.70,      // and how much better it pays
+     Measure with THAT bot and no other. An earlier pass used an ad-hoc policy
+     written in the browser console with a slightly longer lookahead, scored
+     64,606 on the same build, and set par 44% too high - a bot is a definition
+     of "playing well", so a par measured against a bot nobody can re-run is a
+     number nobody can check. Re-measure whenever a station, a multiplier or the
+     obstacle mix changes; all three move it. */
+  par: 32000,
+  gaugeTicks: 7,
+  /* Full scale on the gauge, as a multiple of par. Three stars is 1.15x par, so
+     the bar has to keep going well past that or a good run pegs it and a great
+     run looks identical to it. At 1.8 the weaving bot fills 68%. */
+  gaugeMax: 1.8,
+
+  levelScale: 1.55,
+  priceScale: 1.70,
 };
 
 // -- wax ---------------------------------------------------------------------
@@ -160,51 +123,36 @@ export const T = {
 export interface Wax {
   n: string;
   col: number;
-  hue: number;   // 0..1 around the wheel
-  lit: number;   // 0..1 perceptual lightness
-  price: number; // multiplier on this layer's contribution
+  hue: number;
+  lit: number;
+  price: number;
 }
 
-/* Candy colours, straight off the reference: saturated cyan, hot pink and a
-   sharp yellow against a purple runway.
-
-   The warm ones sit close together on the hue wheel on purpose - stacking them
-   is the expensive-looking mistake, and the cheap contrasting dip beats a
-   second matching one. Which of the two is better depends on what the stack is
-   already wearing, which is what makes a vat a decision rather than a bigger
-   number. */
+/* Candy colours, off the reference: hot pink, cyan, mint and gold against a
+   pale runway. The warm ones sit close together on the hue wheel on purpose -
+   stacking them is the expensive-looking mistake. */
 export const WAXES: Wax[] = [
   { n: 'CREAM',     col: 0xfff0d0, hue: 0.11, lit: 0.92, price: 1.00 },
   { n: 'AQUA',      col: 0x4fe3f0, hue: 0.51, lit: 0.78, price: 1.20 },
-  { n: 'BUBBLEGUM', col: 0xff4d8d, hue: 0.94, lit: 0.56, price: 1.30 },
+  { n: 'BUBBLEGUM', col: 0xff3d92, hue: 0.94, lit: 0.52, price: 1.30 },
   { n: 'SUNBEAM',   col: 0xffd429, hue: 0.14, lit: 0.80, price: 1.35 },
   { n: 'MINT',      col: 0x5ef0a8, hue: 0.41, lit: 0.82, price: 1.45 },
   { n: 'LILAC',     col: 0xb07bff, hue: 0.73, lit: 0.63, price: 1.55 },
 ];
 
-/* Hue distance around the wheel: 0.5 is opposite, 0 is the same colour. */
 export function hueGap(a: number, b: number): number {
   const d = Math.abs(a - b) % 1;
   return d > 0.5 ? 1 - d : d;
 }
 
-/* Whether two waxes read as two colours at arm's length.
-
-   Hue distance alone is wrong, and a unit test caught it before any of this
-   was drawn: cream and bubblegum are near-neighbours on the wheel and are
-   obviously two colours, because one is nearly white. Lightness is doing the
-   work there, exactly as CRAFT.md says. Either axis counts, which makes pale
-   cream genuinely useful as a separator between two saturated dips rather than
-   the cheap wax you tolerate - and that is how a real layered candle is
-   banded. */
+/* Whether two waxes read as two colours at arm's length. Hue distance alone is
+   wrong - cream and bubblegum are near-neighbours on the wheel and obviously
+   two colours, because one is nearly white. Either axis counts. */
 export const reads2 = (a: Wax, b: Wax) =>
   hueGap(a.hue, b.hue) > 0.18 || Math.abs(a.lit - b.lit) > 0.30;
 
 // -- moulds and wrapping ------------------------------------------------------
 
-/* The press stamps a shape into every candle on the tray. `sides`, `twist` and
-   `bulge` drive the actual geometry, so a mould the player unlocked is one
-   they can see from across the runway - not a number on a results screen. */
 export interface Mould { n: string; sides: number; twist: number; bulge: number; mul: number; }
 export const MOULDS: Mould[] = [
   { n: 'PLAIN',  sides: 16, twist: 0.00, bulge: 0.00, mul: 1.00 },
@@ -213,15 +161,15 @@ export const MOULDS: Mould[] = [
   { n: 'STAR',   sides: 6,  twist: 0.00, bulge: 0.34, mul: 1.90 },
 ];
 
-/* Wrapping is the last station and the biggest single multiplier, which is why
-   it sits at the end of the runway - where the stack is at its most valuable
-   and the obstacles are at their thickest. */
-export interface Wrap { n: string; col: number; mul: number; }
+/* Wrapping turns a candle into a wrapped gift box with a bow, which is exactly
+   what the reference does at its WRAP station - the loaf visibly becomes a row
+   of presents. Biggest single multiplier, and it sits late on the runway. */
+export interface Wrap { n: string; col: number; bow: number; mul: number; }
 export const WRAPS: Wrap[] = [
-  { n: 'BARE',   col: 0x000000, mul: 1.00 },
-  { n: 'RIBBON', col: 0xff4d8d, mul: 1.45 },
-  { n: 'BOXED',  col: 0xffd429, mul: 1.90 },
-  { n: 'LUXE',   col: 0x8be0ff, mul: 2.40 },
+  { n: 'BARE',   col: 0x000000, bow: 0x000000, mul: 1.00 },
+  { n: 'RIBBON', col: 0xff3d92, bow: 0xffd429, mul: 1.45 },
+  { n: 'BOXED',  col: 0xd8ecff, bow: 0xff3d92, mul: 1.90 },
+  { n: 'LUXE',   col: 0xffd429, bow: 0xff3d92, mul: 2.40 },
 ];
 
 // -- workshops ----------------------------------------------------------------
@@ -234,83 +182,68 @@ export interface Workshop {
   waxes: number[];
 }
 
-/* Bright, high-key and saturated, all four of them.
+/* The reference's main theme is a WHITE runway with pale lavender stripes and
+   lilac rails, under a flat bright cyan sky - not the purple this build used
+   for two versions. Purple is its second theme, so it stays as workshop two.
 
-   This is a deliberate reversal of the previous build, which ramped the
-   ambient light down per workshop until the candle's own flame was the only
-   thing lighting the scene. That was a good technique aimed at the wrong game.
-   A factory runway is daylight: the reference is a purple track floating in
-   blue sky with hot-pink signage, and it is relentlessly bright. The flame
-   survives where it actually earns its place - the gift table at the end,
-   where the finished candles are lit one at a time. */
-/* The runway is always dark and saturated; the sky is always light. That
-   pairing is not decoration, it is the only thing separating the play space
-   from the background.
-
-   The second workshop was first written as a pink runway under a pink sky -
-   the same hue, a similar lightness - and the track dissolved into the
-   backdrop from twenty units out, which is exactly the distance you steer by.
-   Change the *lightness* between road and sky, not just the hue, or a themed
-   level quietly becomes an unreadable one. */
-/* No workshop offers CREAM at a pool.
-
-   Cream is what a candle's core already is, and `dip` refuses a colour the
-   candle is already wearing - so a cream pool was a station a third of the
-   tray could drive through and get nothing from, which is the "a station must
-   always do something" rule broken in a way that only shows up on screen as a
-   tray that stubbornly stays beige. Cream stays in the ladder as the core and
-   as the thing saturated colours are read against. */
+   Rule that still holds: the road and the sky must differ in LIGHTNESS, not
+   just hue, or the track dissolves into the backdrop at the distance you steer
+   by. There is a test. */
 export const WORKSHOPS: Workshop[] = [
-  { name: 'THE WORKSHOP',  sky: ['#3aa8ee', '#bfeaff'], road: 0x5a27ab, rail: 0xf0e4ff, stripe: 0x7440c9,
-    prop: 0xff4d8d, cloud: 0xffffff, waxes: [1, 2, 3] },
+  /* The sky is a FLAT saturated cyan that never fades toward white, which is
+     what the reference's is. A gradient running to near-white at the horizon
+     put a white runway against a white background at exactly the distance the
+     player steers by - the same failure as the pink-on-pink theme, caught by
+     the same test. */
+  { name: 'THE WORKSHOP',  sky: ['#12b3ee', '#4ac6f2'], road: 0xf2eefb, rail: 0xb07ae4, stripe: 0xe0d4f4,
+    prop: 0xd8ecff, cloud: 0xffffff, waxes: [2, 1, 3] },
+  { name: 'NIGHT SHIFT',   sky: ['#12b3ee', '#4ac6f2'], road: 0x5a27ab, rail: 0xd8c0ff, stripe: 0x7440c9,
+    prop: 0xff3d92, cloud: 0xffffff, waxes: [1, 2, 4] },
   { name: 'SUGAR FACTORY', sky: ['#ffc98f', '#fff4e2'], road: 0xb01f68, rail: 0xffe6f2, stripe: 0xd13a83,
-    prop: 0x4fe3f0, cloud: 0xffffff, waxes: [2, 3, 5] },
-  { name: 'MINT ATELIER',  sky: ['#8fe8ff', '#f0fffb'], road: 0x156b62, rail: 0xdcfff6, stripe: 0x22897d,
-    prop: 0xffd429, cloud: 0xffffff, waxes: [4, 1, 2] },
+    prop: 0x4fe3f0, cloud: 0xffffff, waxes: [3, 2, 5] },
   { name: 'THE BOUTIQUE',  sky: ['#c9a4ff', '#f4ecff'], road: 0x35176e, rail: 0xe8dcff, stripe: 0x4a2496,
     prop: 0xffd429, cloud: 0xffffff, waxes: [5, 2, 3] },
 ];
 
-/* Rough perceptual lightness of a packed 0xRRGGBB, 0..1. Only used by a test,
-   but it lives here so the test is checking the same numbers the game draws. */
+/* Rough perceptual lightness of a packed 0xRRGGBB, 0..1. Lives here so the
+   test checks the same numbers the game draws. */
 export function lightnessOf(col: number): number {
   const r = ((col >> 16) & 255) / 255, g = ((col >> 8) & 255) / 255, b = (col & 255) / 255;
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
+export const hexLightness = (hex: string): number =>
+  lightnessOf(parseInt(hex.replace('#', ''), 16));
 
-export function hexLightness(hex: string): number {
-  return lightnessOf(parseInt(hex.replace('#', ''), 16));
-}
+// -- shops --------------------------------------------------------------------
 
-// -- upgrades and progression -------------------------------------------------
+/* Progression is BUYING SHOPS, not levelling stats.
 
-/* Stat upgrades bought between levels, which is how the reference does it -
-   its strategy guide's advice is to "spread upgrades evenly and prioritise
-   earning power and candle stack growth", so those two are deliberately the
-   first rows in the shop. */
+   The reference ends each run by driving between shop panels beside the track
+   - SCENT SHOP $4,000, ONLINE SHOP $1,000, LUXURY SHOP - each with a green
+   plus button, which is what a store review means by "purchasing extra
+   stations like the boutique". The observed names and the two observed prices
+   are used as-is; the rest follow the same shape. */
 export interface Upgrades {
-  stack: number;   // candle stack growth
-  earn: number;    // earning power
-  grip: number;    // how few candles an obstacle takes
-  reach: number;   // cash magnet
-  press: number;   // best mould unlocked
-  wrap: number;    // best wrapping unlocked
-  vat: number;     // layers a single vat lays down
-  spark: number;   // glitter potency
+  stack: number;   // Bigger Batch
+  earn: number;    // Online Shop
+  grip: number;    // Steady Tray
+  reach: number;   // Long Reach
+  vat: number;     // Deeper Vats
+  spark: number;   // Glitter Cannon
+  press: number;   // The Boutique - moulds
+  wrap: number;    // Luxury Shop - wrapping
+  scent: number;   // Scent Shop - adds a SCENT station to every run
 }
 
 export const DEF_UP: Upgrades = {
-  stack: 0, earn: 0, grip: 0, reach: 0, press: 0, wrap: 0, vat: 0, spark: 0,
+  stack: 0, earn: 0, grip: 0, reach: 0, vat: 0, spark: 0, press: 0, wrap: 0, scent: 0,
 };
 
 export const scaleFor = (level: number) => Math.pow(T.levelScale, level - 1);
 export const priceFor = (level: number) => Math.pow(T.priceScale, level - 1);
 
 export const startCandles = (up: Upgrades) => T.startCandles + up.stack * 2;
-export const maxCandles = () => T.maxCandles;
 
-/* Grip reduces how many candles an obstacle knocks off, and it floors at one.
-   An obstacle that can cost nothing is scenery. */
 export const takeMul = (up: Upgrades) => Math.pow(0.88, up.grip);
 export const obstacleTake = (base: number, up: Upgrades) =>
   Math.max(1, Math.round(base * takeMul(up)));
@@ -319,30 +252,21 @@ export const earnMul = (up: Upgrades) => 1 + up.earn * 0.14;
 export const magnetR = (up: Upgrades) => T.magnetBase * (1 + up.reach * 0.26);
 export const vatLayers = (up: Upgrades) => 1 + Math.floor(up.vat / 3);
 export const glitterPer = (up: Upgrades) => 1 + Math.floor(up.spark / 3);
-/* The press and wrap stations always do *something*, from the first level.
 
-   Starting them at index 0 meant the level-1 press stamped PLAIN onto plain
-   candles and printed "ALREADY PLAIN" - a station on the runway, with a sign,
-   that was a dead beat until an upgrade was bought several levels later. A
-   station the player drives through and gets nothing from teaches them to stop
-   reading the signs. So the floor is the first real mould and the first real
-   wrapping, and the upgrades climb from there. */
+/* The press and wrap stations always do *something* from the first level.
+   Starting them at index 0 meant a level-1 press stamping PLAIN onto plain
+   candles - a station with a gantry and a sign that was a dead beat. */
 export const bestMould = (up: Upgrades) => clamp(1 + up.press, 1, MOULDS.length - 1);
 export const bestWrap = (up: Upgrades) => clamp(1 + up.wrap, 1, WRAPS.length - 1);
 export const MAX_PRESS = MOULDS.length - 2;
 export const MAX_WRAP = WRAPS.length - 2;
 
-/* Where a hazard, a banknote or a station goes across the runway.
+/* The Scent Shop is the one upgrade that adds a STATION rather than a number,
+   which is the reference's whole progression model. Bought once. */
+export const hasScent = (up: Upgrades) => up.scent > 0;
 
-   Everything the player must reach or dodge has to live inside the band a
-   thumb can steer across, which is `laneClamp`, not the width of the road
-   mesh. Placing to the full road width instead is the same class of mistake as
-   a content band below the deepest reachable ground: the object is drawn, it
-   is in the level, and it can never once interact with the player. Nothing
-   errors and nothing looks missing.
-
-   The runway is deliberately wider than the band so the play space has
-   shoulders to read against - that is a visual decision, and this function is
-   the seam that stops it silently becoming a gameplay one. */
+/* Where a hazard, a banknote or a pickup goes across the runway. Everything
+   the player must reach or dodge lives inside the band a thumb can steer
+   across, which is `laneClamp`, not the width of the road mesh. */
 export const laneX = (h: number, inset = 0) =>
   clamp((h - 0.5) * 2 * T.laneClamp, -T.laneClamp + inset, T.laneClamp - inset);

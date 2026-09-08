@@ -21,13 +21,14 @@ import { T, WAXES, MOULDS, WRAPS, reads2 } from './tuning.js';
 import { clamp } from './util.js';
 
 export interface Recipe {
-  layers: number[];   // wax ids, BOTTOM band first, newest dip last
+  layers: number[];   // wax ids, TIP end first, newest dip last
   glitter: number;
+  scent: number;      // the Scent Shop station, once it has been bought
   mould: number;
   wrap: number;
 }
 
-export const newRecipe = (): Recipe => ({ layers: [0], glitter: 0, mould: 0, wrap: 0 });
+export const newRecipe = (): Recipe => ({ layers: [0], glitter: 0, scent: 0, mould: 0, wrap: 0 });
 
 export const topWax = (r: Recipe): number => r.layers[r.layers.length - 1];
 
@@ -52,6 +53,12 @@ export function addGlitter(r: Recipe, n = 1): boolean {
   return r.glitter !== before;
 }
 
+export function addScent(r: Recipe): boolean {
+  if (r.scent > 0) return false;
+  r.scent = 1;
+  return true;
+}
+
 /* A press and a wrapper only ever improve what they find. A station that can
    quietly downgrade a candle while showing the same sign is a trap rather than
    a decision - and with per-candle state the player cannot even see which
@@ -69,17 +76,23 @@ export function wrapIn(r: Recipe, wrap: number): boolean {
 }
 
 export const cloneRecipe = (r: Recipe): Recipe => ({
-  layers: r.layers.slice(), glitter: r.glitter, mould: r.mould, wrap: r.wrap,
+  layers: r.layers.slice(), glitter: r.glitter, scent: r.scent,
+  mould: r.mould, wrap: r.wrap,
 });
 
 // -- geometry, all derived ----------------------------------------------------
 
-/* A candle is a layer cake, not an onion.
+/* A candle is a layer cake, not an onion - and in this game it LIES DOWN.
 
-   Dips modelled as concentric shells - which is what dipping physically does -
-   render as almost nothing, because the outermost shell hides every shell
-   inside it. Horizontal bands stacked up the candle, oldest at the bottom and
-   newest on top, put every dip on screen at once. */
+   Dips modelled as concentric shells, which is what dipping physically does,
+   render as almost nothing: the outermost shell hides every shell inside it.
+   Bands instead, and the reference draws them running ALONG the candle - its
+   screenshots show one sitting in a wax pool striped down its length.
+
+   So `candleHeight` is the candle's LENGTH across the lane, `bandYs` are band
+   centres measured from the tip end, and the renderer lays the whole thing on
+   its side. The model does not care which way up it is drawn, which is why
+   none of the tests below changed when it was turned over. */
 export const candleHeight = (r: Recipe): number =>
   T.coreH + r.layers.length * T.hPerLayer;
 
@@ -132,6 +145,7 @@ export function craftOf(r: Recipe): number {
   return (1 + Math.max(0, colourCount(r) - 1) * T.layerValue)
     * (1 + contrastPairs(r) * T.contrastValue)
     * (1 + r.glitter * T.glitterValue)
+    * (1 + r.scent * T.scentValue)
     * MOULDS[r.mould].mul
     * WRAPS[r.wrap].mul;
 }

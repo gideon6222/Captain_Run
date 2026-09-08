@@ -35,6 +35,22 @@ async function bootFresh(page: Page, seconds = 0) {
 
 const state = (page: Page) => page.evaluate(() => (window as any).__CR.state());
 
+/* Back to a clean LEVEL ONE, not just a clean run.
+
+   `freeze()` restarts the level in place, and finishing a level increments
+   `S.level` - so two policies played back to back are played on two different
+   levels. Every layout decision is keyed on `hash(chunk, something + S.level)`,
+   so that is not "slightly harder", it is a completely different runway: the
+   comparison between the two policies measured the luck of level two. */
+async function restart(page: Page) {
+  await page.evaluate(() => {
+    const CR = (window as any).__CR;
+    for (const k of Object.keys(CR.S.up)) CR.S.up[k] = 0;
+    CR.S.level = 1; CR.S.coins = 0;
+    CR.freeze();
+  });
+}
+
 /* Run a whole level under a scripted policy, never drawing while it polls. */
 async function playLevel(page: Page, mode: 'idle' | 'dodge' | 'gather' | 'weave') {
   return page.evaluate((m) => {
@@ -115,8 +131,9 @@ test('weaving the pools beats holding a line, end to end', async ({ page }) => {
      game is a screensaver. The previous build measured *identical* per-candle
      value across every play style, which is exactly this test failing. */
   await bootFresh(page);
+  await restart(page);
   const gather = await playLevel(page, 'gather');
-  await page.evaluate(() => (window as any).__CR.freeze());
+  await restart(page);
   const weave = await playLevel(page, 'weave');
 
   expect(weave.result.each,
@@ -124,7 +141,26 @@ test('weaving the pools beats holding a line, end to end', async ({ page }) => {
     .toBeGreaterThan(gather.result.each * 1.6);
   expect(weave.state.avgColours, 'and it must show up as more colours per candle')
     .toBeGreaterThan(1.5);
-  expect(weave.result.stars).toBeGreaterThan(gather.result.stars);
+  expect(weave.result.stars,
+    `weaving rated ${weave.result.stars} stars, gathering ${gather.result.stars}`)
+    .toBeGreaterThan(gather.result.stars);
+});
+
+/* `par` is the number the end-of-run gauge and the star rating are both drawn
+   from, and it is the easiest number in the game to leave behind: it is not
+   wrong until a station or a multiplier moves, and then it is silently wrong
+   forever. So the four policies get pinned to the four ratings they were
+   calibrated against. If this fails, re-measure and re-write the table in the
+   comment beside `par` - do not widen the test. */
+test('par still separates the four ways of playing a level', async ({ page }) => {
+  await bootFresh(page);
+  const got: Record<string, number> = {};
+  for (const mode of ['idle', 'dodge', 'gather', 'weave'] as const) {
+    await restart(page);
+    got[mode] = (await playLevel(page, mode)).result.stars;
+  }
+  expect(got, `stars by policy: ${JSON.stringify(got)}`)
+    .toEqual({ idle: 0, dodge: 1, gather: 1, weave: 3 });
 });
 
 test('a pool treats the candles standing in it, not the whole tray', async ({ page }) => {
@@ -493,21 +529,27 @@ test('the simulation is unchanged after thirty seconds', async ({ page }) => {
   const { calls, ...sim } = s;
 
   expect(sim).toEqual({
-    z: 342.24000000000916,
-    count: 27,
-    avgColours: 2.7037,
-    avgGlitter: 0.963,
-    pressed: 22,
-    wrapped: 6,
-    plain: 2,
-    worth: 4936,
-    cash: 1080,
-    lost: 7,
-    gained: 26,
-    dips: 112,
-    stations: 2,
-    obstacles: 14,
-    notes: 3,
+    z: 341.32000000000903,
+    count: 28,
+    avgColours: 2.8571,
+    /* Zero glitter and zero wrapped is CORRECT for this run, not a dropped
+       station. Pools are half-width and a run that never steers sits exactly
+       on the seam, where `p.x < 0 ? left : right` puts every candle in the
+       right-hand pool of every station - so it only ever meets half the
+       runway. `every station kind actually fires during a real level` is the
+       test that covers the other half. */
+    avgGlitter: 0,
+    pressed: 21,
+    wrapped: 0,
+    plain: 0,
+    worth: 3894,
+    cash: 1440,
+    lost: 10,
+    gained: 30,
+    dips: 87,
+    stations: 3,
+    obstacles: 10,
+    notes: 2,
     loose: 16,
     over: false,
     coins: 0,

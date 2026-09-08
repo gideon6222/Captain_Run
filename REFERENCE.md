@@ -54,7 +54,7 @@ at the edge of the track, pointing inward.
 |---|---|
 | **CANDLE** | A **pool of coloured wax lying in the track**, roughly half the width, with a swirled liquid surface. A **ladle on the curved arm tips and pours into it.** Two often appear side by side in different colours — the guide says to swipe left and right to get all your candles into both. |
 | **GLITTER** | A tilted **bottle** on an arm sprinkling multicoloured glitter over the track. Adds sparkle to whatever passes under it. |
-| **ROTATE** | A white platform with a big curved white arrow. **Turns the slab.** We do not have this. |
+| **ROTATE** | A white platform with a big curved white arrow. **Turns the slab.** |
 | **MOLD** | A pink column press with a **yellow star** on it, stamping a shape. |
 | **WRAP** | A giant **gift box with a bow** at the track edge. Turns the segments into **wrapped gift boxes with pink bows**, stacked. |
 
@@ -89,7 +89,7 @@ at the edge of the track, pointing inward.
 
 - **Sky:** flat bright cyan.
 - **Track:** two themes seen — **white with pale lavender stripes and lilac edge rails**, and
-  **deep purple**. Ours is purple only.
+  **deep purple**. Both are in, as workshops one and two.
 - **Signs:** hot-pink pills, white bold caps, on thin dark curved arms.
 - **Skyline:** pale blue-white **stacked cylinder towers** (like giant candle stacks) and low
   boxy blocks either side, well below the track.
@@ -98,24 +98,38 @@ at the edge of the track, pointing inward.
 
 ## Where our build differs
 
-Matching already: the trailing object that lags, half-width wax pools in pairs, per-segment
-colour, loose candles as the growth mechanic, glitter/mould/wrap stations, pink pill signs,
-green money, red barriers and spiked rollers, a value-based sell at the end.
+Closed in v4.0.0 — every item on the previous list:
 
-Known differences, in rough order of how much they would move the resemblance:
+1. ~~We draw upright separate candles; it draws one long segmented slab lying down.~~ The
+   player object is now one loaf lying along the track, one candle per row, each candle
+   spanning the lane, gold tips down one edge.
+2. ~~No ROTATE station.~~ A white plate with a curved arrow; turns the loaf end for end.
+3. ~~Progression is stat upgrades; theirs is buying shops.~~ The workshop sells the Online
+   Shop, the Boutique, the Luxury Shop and the Scent Shop, at the two observed prices where
+   we have them. **The Scent Shop adds a station**, which is the shape of theirs.
+4. ~~Our track is purple only.~~ THE WORKSHOP is white with lavender stripes and lilac rails
+   under a flat cyan sky; purple is NIGHT SHIFT, workshop two.
+5. ~~No value gauge at the end.~~ A vertical gauge with a numeric scale drawn from `par`, with
+   the stars kept underneath as the between-level goal.
+6. ~~Signs sit on a gantry with posts.~~ Each hangs from a single thin dark curved arm.
+7. ~~No swirled texture on the pool surface, no stacked-cylinder skyline.~~ Both in.
+8. ~~Wrapped candles become gift boxes with bows; ours get a ribbon band.~~ Wrapping turns a
+   candle into a box with a bow.
 
-1. **We draw upright separate candles; it draws one long segmented slab lying down.**
-2. **No ROTATE station.**
-3. **Progression is stat upgrades; theirs is buying shops** (Scent / Online / Luxury).
-4. **Our track is purple only** — the white/lavender theme is the one in most screenshots.
-5. **No value gauge at the end** — we show a star rating and an itemised card.
-6. **Signs sit on a gantry with posts**; theirs hang from single curved arms.
-7. **No swirled texture on the pool surface**, no stacked-cylinder skyline.
-8. Wrapped candles become **gift boxes with bows**; ours get a ribbon band.
+Also matched since: the sweeper (orange diagonal bar, dark blue chevrons), shop fronts either
+side of the track past the finish line, and Fredoka for the type.
+
+Still open, in rough order of how much they would move the resemblance:
+
+1. **The shop fronts are scenery.** Theirs are bought in the track, with a green `+` per
+   panel; ours draw the panels and open a sheet.
+2. **The finished batch is not shown on a dark podium.** We light it in place on the runway.
+3. **Money is a flat green tag with a hole**; ours is a green slab with a dark mark on it.
+4. **We have not seen their upgrade screen at all**, so ours is ours.
 
 ## Still unknown
 
 - The **upgrade/shop screen** itself — only the in-track shop panels have been seen, not
-  whatever menu they open.
+  whatever menu they open. **A screenshot of it would settle the last real difference.**
 - Whether levels are themed sets or a continuous ladder.
 - Whether the slab can be lost entirely, and what failure looks like.

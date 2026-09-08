@@ -114,8 +114,12 @@ test('the runway always separates from the sky it floats in', () => {
       assert.ok(gap > 0.25,
         `${w.name}: road and sky ${s} are only ${gap.toFixed(2)} apart in lightness`);
     }
-    /* And the rails have to read against the road they edge. */
-    assert.ok(P.lightnessOf(w.rail) - road > 0.25, `${w.name}: rails vanish into the road`);
+    /* And the rails have to read against the road they edge - in either
+       direction. This was written as `rail - road` when every road was dark;
+       the white theme has rails DARKER than the runway, which is what the
+       reference does, and the one-sided form called that a failure. */
+    assert.ok(Math.abs(P.lightnessOf(w.rail) - road) > 0.25,
+      `${w.name}: rails vanish into the road`);
   }
 });
 

@@ -1,9 +1,11 @@
 # Candle Gift
 
-A candle-factory runner. Steer a tray of candles down a runway floating in open sky, pick a
-side at every gantry — a wax vat, a glitter sprinkler, a press or a bow — dodge the barriers
-and saws that knock candles off the back, sweep up the banknotes, and sell the tray at the
-gift table.
+A candle-factory runner. Steer one long slab of candles — lying flat along the track, gold
+tips down one edge — through pools of wax lying in the runway, weaving so different parts of
+the slab come out different colours. Glitter, a mould press, a rotate plate and a gift wrap
+finish them; barriers, spike rollers, saws and a sliding sweeper knock candles off the back;
+banknotes and loose candles lie on the track. Sell the batch on a value gauge at the end and
+buy the next shop.
 
 Modelled on **Candle Gift** by Rollic Games (`com.TwoPageGames.CandleGift`), at Gideon's
 request.
@@ -62,7 +64,7 @@ npm run size       # bundle size guard, fails in both directions
 | `src/sfx.ts` | The whole audio graph, synthesised, built on first gesture |
 | `src/gfx.ts` | Toon materials, inverted-hull outlines, the instanced `Layer` |
 | `src/changelog.js` | `VERSION` and the patch notes shown in the workshop |
-| `e2e/smoke.spec.ts` | 25 tests against the built game, including the thirty-second golden |
+| `e2e/smoke.spec.ts` | 26 tests against the built game, the four-policy bot, and the thirty-second golden |
 | `REFERENCE.md` | **What the real game actually does**, observed from its screenshots and a gameplay video |
 | `NOTES.md` | Design decisions, tuning as shipped, and what to do next |
 
@@ -86,10 +88,11 @@ quickly to try and dunk all of your candles in both of the pools."*
 
 Treating the tray as one shared recipe deletes that entire skill. Measured, it produced an
 **identical** per-candle value across four scripted play styles — never touching the screen
-scored the same quality as playing perfectly. With per-candle recipes, weaving is worth
-**2.6× per candle** over just driving through.
+scored the same quality as playing perfectly. With per-candle recipes and half-width pools,
+weaving is worth **9.4× per candle** over never steering.
 
-`weaving the pools beats holding a line` in e2e is the standing guard on it.
+`weaving the pools beats holding a line` in e2e is the standing guard on it, and
+`par still separates the four ways of playing a level` pins the four ratings.
 
 ## Invariants
 
@@ -126,21 +129,46 @@ scored the same quality as playing perfectly. With per-candle recipes, weaving i
 - **Any `reset → push → flush` render path will eventually lose its flush and fail silently.**
   Assert `mesh.count` against the model; `e2e` does, including that only the *pressed* mould's
   band layer draws anything.
+- **A prop placed relative to where the player *stops* has to clear where the camera goes
+  when they stop.** The gift table sat two units past the finish line; the end-of-run camera
+  swung *forward* past that line to look back at the slab, so a six-metre white slab ended up
+  between the lens and the thing being framed and the shot was mostly table corner. The
+  camera now stays behind the slab and the counter moved to +15, which also puts the shop
+  fronts in frame as a backdrop rather than in the way.
 - **Use `requestAnimationFrame` to draw, never to undo.**
 - **`freeze()` before `advance()` in any harness**, or every recorded number moves with the
   machine.
+- **`freeze()` restarts the level; it does not reset `S.level`.** Every layout decision is
+  keyed on `hash(chunk, something + S.level)`, so a test that plays two policies back to back
+  plays them on two *completely different runways* — not "one slightly harder". That is what
+  `restart()` in the e2e helpers is for, and until it existed the headline comparison between
+  weaving and gathering was measuring the luck of level two. Level 2 happens to be a bad
+  draw: the same bot loses 22 candles there against 6 on level 1.
 - **Seeding or clearing the save needs `Storage.prototype.setItem` frozen first**, or the
   outgoing page writes live state back over it on reload.
 
 ## Numbers that are calibrated, not chosen
 
-- **`par: 13800` and `STAR_AT = [0.30, 0.60, 1.15]`** — measured, not picked. Four scripted
-  runs of level 1 with no upgrades: never steering 8,103; dodging only 6,011; gathering
-  pickups 8,474; **weaving the pools 20,404**. Those land on **1 / 1 / 2 / 3 stars**. The
-  window is narrow — idling and gathering are only 4% apart, because the magnet collects
-  pickups almost by itself — so this is fragile. **Re-measure whenever pool length, the
-  magnet, obstacle damage or the craft multipliers move.**
-- **`barrierTake: 3, rollerTake: 2, sawTake: 4`.** These were 5/3/6 when growth came from
+- **`par: 32000` and `STAR_AT = [0.30, 0.60, 1.15]`** — measured, not picked, and measured
+  with **the bot that lives in the repo**: `playLevel` in `e2e/smoke.spec.ts`. Level 1, no
+  upgrades: never steering 4,912 ($140 a candle); dodging only 18,158 ($680); gathering
+  pickups 14,048 ($447); **weaving the pools 39,134 ($1,312)**. Those land on
+  **0 / 1 / 1 / 3 stars**, and `par still separates the four ways of playing a level` fails
+  if they stop doing so.
+
+  **Measure with that bot and no other.** An earlier pass wrote an ad-hoc policy in the
+  browser console with a slightly longer lookahead, scored 64,606 on the same build and set
+  par 44% too high. A bot is a *definition of playing well*; a par measured against one
+  nobody can re-run is a number nobody can check.
+- **`gaugeMax: 1.8`.** The end-of-run gauge runs to 1.8 × par, so the weaving bot fills 68%
+  of it. At 1.35 a three-star run pegged the bar and a great run looked identical to a good
+  one, which is the whole thing the gauge exists to distinguish.
+- **The sweeper's collision half-width is 1.15 against a drawn half-width of 1.5**, and it
+  swings `laneClamp × 0.55`, not × 0.78. It is the one obstacle that moves, so it is the one
+  where the gap has to be *provably* there: at full width and the standard 0.34 tolerance it
+  covered 61% of the steerable band at every point in its swing, and the scripted weaving bot
+  lost half its slab to it. A moving obstacle with no gap is not an obstacle, it is a tax.
+- **`barrierTake: 3, rollerTake: 2, sawTake: 4, sweeperTake: 3`.** These were 5/3/6 when growth came from
   `×2` gates. Growth is now loose candles worth one each, so the old numbers meant a single
   barrier took five of the eight you start with.
 - **`poolLen: 11.0`.** A pool has to be longer than the tray is deep, or it cannot get the
@@ -158,8 +186,13 @@ scored the same quality as playing perfectly. With per-candle recipes, weaving i
 - **Candles are ~4:1 tall and the camera is low.** The bands are horizontal, so they are only
   legible from the side; a high camera sees the tops and a three-colour tray reads as one
   colour.
-- **Draw calls 45–65.** Everything on the runway is instanced; the stations are the expensive
-  part (three pooled gantries of nine meshes each). The e2e budget is 80.
+- **Draw calls 26–85**, measured across a whole level with every upgrade at 3 (which is the
+  worst case: every station kind active). Everything on the runway is instanced; the
+  *stations* are the cost, at three pooled gantries of about twelve visible meshes each, and
+  the three shop fronts past the finish line add twelve more when they come into frustum.
+  The e2e budget is 90. Shop fronts started at seven meshes apiece and pushed the peak to 87
+  — a crossed pair of bars for a `+` and an outline hull are invisible at that distance and
+  cost the same as the panel.
 
 ## Testing
 

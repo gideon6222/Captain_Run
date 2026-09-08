@@ -13,41 +13,44 @@ const ROW = () => T.rowWidth;
    teleports. Get any of those wrong and the tray is a decoration that follows
    the player exactly - which is a crowd, a different and worse game. */
 
-test('a seeded trail starts as rows behind the leader, not a pile', () => {
+test('a seeded trail starts as a loaf behind the leader, not a pile', () => {
   const t = P.newTrail();
   P.seedTrail(t, 0, 0);
   const out = [];
   P.layout(t, 9, out);
 
-  // three abreast: a row shares one distance back and spreads across x
-  assert.equal(out[0].z, out[1].z, 'a row shares one distance back');
-  assert.equal(out[1].z, out[2].z);
-  assert.ok(out[0].x < out[1].x && out[1].x < out[2].x, 'and spreads across the tray');
-  assert.ok(Math.abs(out[1].x) < 1e-9, 'centred on the leader path');
+  /* One candle per row now: the candle itself lies ACROSS the lane, so the
+     loaf is a single file of wide slabs rather than three narrow ones abreast.
+     Every candle therefore sits at its own distance back. */
+  assert.equal(T.rowWidth, 1, 'the loaf is single file - the candles are what is wide');
+  for (let i = 1; i < 9; i++) {
+    assert.ok(out[i].z < out[i - 1].z, `candle ${i} must sit behind candle ${i - 1}`);
+    assert.ok(Math.abs(out[i].x - out[i - 1].x) < 1e-9, 'and on the same line');
+  }
 
-  /* If this fails the whole tray is inside the leader on frame one and visibly
+  /* If this fails the whole loaf is inside the leader on frame one and visibly
      explodes outward over the first half second - the first thing a player
      ever sees. */
-  const gap = out[0].z - out[ROW()].z;
-  assert.ok(Math.abs(gap - T.trailGap) < 0.05, `row spacing should be trailGap, got ${gap}`);
-  for (let r = 1; r * ROW() < 9; r++) {
-    assert.ok(out[r * ROW()].z < out[(r - 1) * ROW()].z, `row ${r} must sit behind row ${r - 1}`);
-  }
+  const gap = out[0].z - out[1].z;
+  assert.ok(Math.abs(gap - T.trailGap) < 0.05, `spacing should be trailGap, got ${gap}`);
 });
 
-test('the tray is wider than one candle but still fits the runway', () => {
-  /* Single file was the first attempt and it is unreadable: every candle hides
-     behind the one in front, so a tray of twenty-six showed the player one
-     candle's worth of colour. */
+test('the loaf is long enough to matter, and a candle spans the lane', () => {
+  /* The readability that three-abreast rows used to provide now comes from the
+     candle being wide: you look down the top faces of a long loaf, so every
+     candle's colour is on screen at once. */
   const t = P.newTrail();
   P.seedTrail(t, 0, 0);
   const out = [];
   P.layout(t, T.maxCandles, out);
-  let maxOff = 0;
-  for (const p of out) maxOff = Math.max(maxOff, Math.abs(p.x));
-  assert.ok(maxOff > 0.2, 'the tray must be more than one candle wide');
-  assert.ok(maxOff <= T.roadW / 2,
-    'and a tray on the centre line must not already hang off the runway');
+  const len = out[0].z - out[out.length - 1].z;
+  assert.ok(len > T.poolLen * 0.8,
+    `a full loaf (${len.toFixed(1)}) should be comparable to a pool (${T.poolLen})`);
+
+  const r = P.newRecipe();
+  const across = P.candleHeight(r);
+  assert.ok(across > T.laneClamp * 0.5, 'a candle must be a real fraction of the lane wide');
+  assert.ok(across < T.roadW, 'but must not be wider than the runway');
 });
 
 test('the back lags: it is where the leader was, not where the leader is', () => {
@@ -73,25 +76,8 @@ test('a longer tray lags further, which is the whole trade', () => {
 
   const out = [];
   P.layout(t, T.maxCandles, out);
-  const nearCentre = out[ROW() + 1].x;                 // second row, centre
-  const farCentre = out[T.maxCandles - ROW() + 1].x;   // last row, centre
-  assert.ok(farCentre < nearCentre,
+  assert.ok(out[T.maxCandles - 1].x < out[1].x,
     'more candles must mean more of them still on the old line');
-});
-
-test('candles in a row lag identically, so a row is a rank not a smear', () => {
-  const t = P.newTrail();
-  P.seedTrail(t, 0, 0);
-  for (let z = 0; z < 20; z += 0.25) P.push(t, 0, z);
-  for (let z = 20; z < 23; z += 0.25) P.push(t, 2, z);
-  const out = [];
-  P.layout(t, 9, out);
-  for (let r = 0; r * ROW() < 9; r++) {
-    const a = out[r * ROW()], b = out[r * ROW() + ROW() - 1];
-    assert.equal(a.z, b.z, `row ${r} must share one z`);
-    assert.ok(Math.abs((b.x - a.x) - (ROW() - 1) * T.rowGap) < 1e-9,
-      `row ${r} must keep its width through a turn`);
-  }
 });
 
 test('positions are continuous - nothing teleports between frames', () => {
