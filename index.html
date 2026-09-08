@@ -49,8 +49,18 @@
   html,body{
     margin:0; padding:0; height:100%; overflow:hidden; background:#3aa8ee; color:var(--ink);
     font-family:"Segoe UI",system-ui,-apple-system,sans-serif; font-weight:800;
-    user-select:none; -webkit-user-select:none; touch-action:none; overscroll-behavior:none;
+    user-select:none; -webkit-user-select:none; overscroll-behavior:none;
   }
+  /* touch-action is set on the PLAY AREA, never on body.
+
+     A browser works out what a touch is allowed to do by intersecting
+     touch-action up the whole ancestor chain, so `touch-action: none` on body
+     silently disables panning inside every scroller underneath it - including
+     the shop sheet. That left the upgrade list unscrollable on a phone, and
+     since the START button sits below the list, unscrollable meant unplayable
+     past the first level. Block gestures where the game is, allow them where
+     the UI is. */
+  #game, #hud, #pops{ touch-action:none; }
   #game{position:fixed; inset:0;}
   canvas{display:block;}
 
@@ -112,8 +122,9 @@
     background:rgba(40,12,60,.62); backdrop-filter:blur(3px);}
   .modal.hidden{display:none;}
   .sheet{
-    width:100%; max-width:520px; max-height:94vh; overflow:auto;
-    padding:16px 14px calc(var(--safe-b) + 16px);
+    width:100%; max-width:520px; max-height:92vh; overflow-y:auto; overscroll-behavior:contain;
+    touch-action:pan-y; -webkit-overflow-scrolling:touch;
+    padding:16px 14px 0;
     background:linear-gradient(#fffdf8,#f4e8ff);
     border:4px solid var(--edge); border-bottom:none; border-radius:22px 22px 0 0;
     box-shadow:0 -8px 30px rgba(40,12,60,.5);
@@ -170,8 +181,20 @@
   .up.locked .upic{background:#e6dcee;}
   .lockmsg{font-size:11px; color:var(--pink); font-weight:800;}
 
+  /* The START button is pinned to the bottom of the sheet rather than sitting
+     at the end of the list.
+
+     It used to be the last thing after eight upgrades, a changelog and a build
+     stamp, so the only way to start a level was to scroll to the bottom - and
+     the moment scrolling broke, the game was over. A control that ends the
+     screen should not depend on reaching the end of the screen. */
+  .gowrap{
+    position:sticky; bottom:0; z-index:4;
+    margin:14px -14px 0; padding:12px 14px calc(var(--safe-b) + 12px);
+    background:linear-gradient(rgba(244,232,255,0), #f4e8ff 34%);
+  }
   .go{
-    width:100%; margin-top:16px; border:4px solid var(--edge); border-radius:16px; padding:16px;
+    width:100%; border:4px solid var(--edge); border-radius:16px; padding:16px;
     font-size:17px; letter-spacing:.12em; font-weight:800; font-family:inherit;
     background:linear-gradient(#ff7ab0,#e8226e); color:#fff; box-shadow:0 6px 0 var(--edge);
     text-shadow:0 2px 0 rgba(0,0,0,.25);
@@ -271,13 +294,14 @@
 
     <div id="shop"></div>
 
-    <button class="go" id="btnGo">START THE LINE</button>
     <div class="verline">
       <span id="verNum">v0.0.0</span>
       <button id="btnNotes" class="notesbtn">WHAT&apos;S NEW</button>
     </div>
     <div id="notes" class="notes hidden"></div>
     <div class="stamp" id="build"></div>
+
+    <div class="gowrap"><button class="go" id="btnGo">START THE LINE</button></div>
   </div>
 </div>
 

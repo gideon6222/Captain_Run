@@ -8,9 +8,17 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.0.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.0.1', date: '2026-09-07', title: 'The workshop scrolls',
+    notes: [
+      'Fixed: the upgrade list would not scroll on a phone, so there was no way to reach the rest of the upgrades - or the start button.',
+      'START THE LINE is now pinned to the bottom of the workshop and is always reachable.',
+      'Dragging over a menu scrolls it instead of steering the tray.'
+    ]
+  },
   {
     version: '2.0.0', date: '2026-09-07', title: 'Candle Gift',
     notes: [

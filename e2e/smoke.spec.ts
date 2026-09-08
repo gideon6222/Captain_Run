@@ -329,6 +329,66 @@ test('reaching the table sells the tray, lights it and opens the next level',
     await expect(page.locator('#rStars i')).toHaveCount(3);
   });
 
+test('the workshop scrolls, and START is reachable without scrolling', async ({ page }) => {
+  /* This was a hard blocker on the phone and not visible anywhere else: with
+     `touch-action: none` on body - which a browser intersects up the whole
+     ancestor chain - the sheet could not be panned, and the window-level
+     steering handler called preventDefault() on any drag that started over it.
+     The START button was the last thing after eight upgrades, a changelog and
+     a build stamp, so unscrollable meant the game could not be continued past
+     the first level.
+
+     Two assertions, because either alone would have missed it: the sheet has
+     to actually scroll, AND the control that leaves the screen must not depend
+     on reaching the end of the screen. */
+  await bootFresh(page);
+  await page.evaluate(() => {
+    const CR = (window as any).__CR;
+    CR.S.coins = 9999999; CR.S.best = 9;
+  });
+  await playLevel(page, 'dodge');
+  await expect(page.locator('#shopScreen')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+
+  const sheet = page.locator('#shopScreen .sheet');
+  const box = await sheet.evaluate((el) => ({
+    scrollH: el.scrollHeight, clientH: el.clientHeight,
+    touch: getComputedStyle(el).touchAction,
+    bodyTouch: getComputedStyle(document.body).touchAction,
+  }));
+  expect(box.scrollH, 'the shop must be longer than the sheet, or this proves nothing')
+    .toBeGreaterThan(box.clientH + 40);
+  expect(box.bodyTouch, 'touch-action on body blocks panning in every scroller under it')
+    .not.toBe('none');
+  expect(box.touch).toMatch(/pan-y|auto|manipulation/);
+
+  /* START is visible and clickable with the sheet still at the top. */
+  await sheet.evaluate((el) => { el.scrollTop = 0; });
+  const go = page.locator('#btnGo');
+  await expect(go).toBeInViewport();
+  await go.click({ timeout: 3000 });
+  await expect(page.locator('#shopScreen')).toHaveClass(/hidden/);
+
+  /* And a real drag over the sheet scrolls it instead of steering the tray. */
+  await page.evaluate(() => {
+    const CR = (window as any).__CR;
+    CR.run.wick = 0;
+    CR.S.coins = 9999999;
+  });
+  await playLevel(page, 'dodge');
+  await expect(page.locator('#shopScreen')).not.toHaveClass(/hidden/, { timeout: 10_000 });
+  const beforeX = await page.evaluate(() => (window as any).__CR.run.targetX);
+  await sheet.evaluate((el) => { el.scrollTop = 200; });
+  const scrolled = await sheet.evaluate((el) => el.scrollTop);
+  expect(scrolled, 'the sheet must be able to scroll at all').toBeGreaterThan(50);
+
+  await page.mouse.move(190, 500);
+  await page.mouse.down();
+  await page.mouse.move(340, 500, { steps: 5 });
+  await page.mouse.up();
+  const afterX = await page.evaluate(() => (window as any).__CR.run.targetX);
+  expect(afterX, 'a drag over the menu must not steer the tray').toBe(beforeX);
+});
+
 test('the results screen reports parts that reconstruct its own total', async ({ page }) => {
   await bootFresh(page);
   const { result: a } = await playLevel(page, 'greedy');

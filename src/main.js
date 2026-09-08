@@ -944,15 +944,27 @@ function flash(a) {
 // INPUT — one thumb, drag anywhere
 // ─────────────────────────────────────────────────────────────────────────────
 let dragId = null, dragX = 0, dragStartX = 0;
+/* Whether a pointer event landed on the UI rather than on the game.
+
+   The steering handlers live on `window` so a drag can start anywhere on the
+   screen, which is right during a run and wrong over a menu: `ptMove` calls
+   preventDefault() on every drag it owns, so a swipe meant to scroll the shop
+   was being eaten by the steering. Combined with touch-action on body it made
+   the upgrade list unscrollable, and the START button sits below it. */
+const onUI = (e) => !!(e.target && e.target.closest && e.target.closest('.modal'));
+
 function ptDown(e) {
+  /* Audio still needs the gesture even when the tap was on a menu - Chrome
+     refuses to build an AudioContext outside one. */
   sfx.init();
+  if (onUI(e)) { dragId = null; return; }
   const t = e.changedTouches ? e.changedTouches[0] : e;
   dragId = t.identifier !== undefined ? t.identifier : 'mouse';
   dragX = t.clientX; dragStartX = run.targetX;
   if (hintTimer > 0) hintTimer = 0.01;
 }
 function ptMove(e) {
-  if (dragId === null) return;
+  if (dragId === null || onUI(e)) return;
   const list = e.changedTouches ? e.changedTouches : [e];
   for (const t of list) {
     const id = t.identifier !== undefined ? t.identifier : 'mouse';
