@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b1420">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Captain Run</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root{
+    --ink:#fff4dc; --dim:#a08a6e; --gold:#ffc93c; --iron:#8fd3ff; --rune:#c17bff;
+    --red:#ff4d5e; --green:#5ce07a;
+    --wood:#3a2418; --wood2:#241408; --edge:#120803;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%; overflow:hidden; background:#0b1420; color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif; font-weight:800;
+    user-select:none; -webkit-user-select:none; touch-action:none; overscroll-behavior:none;
+  }
+  #game{position:fixed; inset:0;}
+  canvas{display:block;}
+
+  .out{ text-shadow: 0 2px 0 var(--edge), 0 -2px 0 var(--edge), 2px 0 0 var(--edge), -2px 0 0 var(--edge), 0 4px 6px rgba(0,0,0,.6); }
+
+  #hud{position:fixed; inset:0; pointer-events:none; padding:calc(var(--safe-t) + 8px) 10px 0;}
+
+  .toprow{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+  .panel{
+    background:linear-gradient(#4a2f1e,#2b1809);
+    border:3px solid var(--edge); border-radius:12px;
+    box-shadow:0 4px 0 var(--edge), inset 0 2px 0 rgba(255,255,255,.13);
+    padding:5px 9px;
+  }
+  #ascent{font-size:15px; letter-spacing:.05em; line-height:1.05;}
+  #ascent small{display:block; font-size:9.5px; color:var(--dim); letter-spacing:.16em; font-weight:800;}
+
+  #res{display:flex; gap:11px; align-items:center;}
+  .r{display:flex; align-items:center; gap:5px; font-size:14px;}
+  .pip{width:15px; height:15px; border:2px solid var(--edge); border-radius:4px; flex:none;}
+  .pip.g{background:linear-gradient(#ffe07a,#f0a01a); border-radius:50%;}
+  .pip.i{background:linear-gradient(#cfeaff,#4aa6e0);}
+  .pip.r{background:linear-gradient(#e7b6ff,#8b3fd6); transform:rotate(45deg); border-radius:3px;}
+
+  #progWrap{margin:9px auto 0; width:min(94%,380px);}
+  #prog{
+    position:relative; height:15px; border:3px solid var(--edge); border-radius:9px;
+    background:#20140a; overflow:hidden; box-shadow:0 3px 0 var(--edge);
+  }
+  #prog i{position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(#8ef0a4,#2e9c4e);}
+  #prog b{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:9px; letter-spacing:.14em;}
+  #progWrap.boss #prog i{background:linear-gradient(#ff8a8a,#c01f30);}
+
+  /* crew, left */
+  #crewBox{position:fixed; left:12px; top:calc(var(--safe-t) + 104px); text-align:center;}
+  #crewN{font-size:34px; line-height:.95; color:#fff;}
+  #crewBox small{font-size:9.5px; letter-spacing:.18em; color:var(--dim);}
+
+  /* weapon card, right */
+  #card{
+    position:fixed; right:10px; top:calc(var(--safe-t) + 96px); width:116px;
+    border:3px solid var(--edge); border-radius:14px; padding:6px 6px 8px; text-align:center;
+    background:linear-gradient(#b8362f,#7a1a1c);
+    box-shadow:0 5px 0 var(--edge), inset 0 2px 0 rgba(255,255,255,.18);
+  }
+  #card .lbl{font-size:8.5px; letter-spacing:.2em; color:#ffd9b0;}
+  #wIcon{height:46px; margin:2px 0 0; display:block;}
+  #wName{font-size:10px; letter-spacing:.04em; line-height:1.1; margin-top:1px; color:#ffe9c6;}
+  #dps{font-size:23px; color:#7dff9b; line-height:1.1; margin-top:1px;}
+  #forge{
+    margin:5px 3px 0; height:11px; border:2px solid var(--edge); border-radius:6px;
+    background:#3d1010; overflow:hidden; position:relative;
+  }
+  #forge i{position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(#cfeaff,#3f9fe0);}
+  #forge b{position:absolute; inset:0; font-size:7.5px; display:flex; align-items:center; justify-content:center; letter-spacing:.1em;}
+
+  #toast{
+    position:fixed; left:0; right:0; top:31%; text-align:center; font-size:26px;
+    opacity:0; transition:opacity .25s; color:var(--gold);
+  }
+  #hint{
+    position:fixed; left:0; right:0; bottom:calc(var(--safe-b) + 26px); text-align:center;
+    font-size:13px; color:#ffeccf; opacity:.95; transition:opacity .6s; letter-spacing:.06em;
+  }
+
+  #pops{position:fixed; inset:0; pointer-events:none; overflow:hidden;}
+  .pop{position:absolute; font-size:17px; will-change:transform,opacity; white-space:nowrap;}
+
+  /* camp */
+  .modal{position:fixed; inset:0; z-index:20; display:flex; align-items:flex-end; justify-content:center;
+    background:rgba(6,10,16,.72); backdrop-filter:blur(3px); padding:0;}
+  .modal.hidden{display:none;}
+  .sheet{
+    width:100%; max-width:520px; max-height:94vh; overflow:auto; padding:16px 14px calc(var(--safe-b) + 16px);
+    background:linear-gradient(#3f2818,#20120a);
+    border:4px solid var(--edge); border-bottom:none; border-radius:20px 20px 0 0;
+    box-shadow:0 -8px 30px rgba(0,0,0,.6);
+  }
+  .sheet::-webkit-scrollbar{display:none;}
+  .shead{position:sticky; top:-16px; margin:-16px -14px 10px; padding:14px 14px 10px;
+    background:linear-gradient(#4a2f1e,#331d0e); border-bottom:3px solid var(--edge); z-index:2;}
+  .shead h2{margin:0; font-size:20px; letter-spacing:.06em;}
+  .shead .sub{font-size:11px; color:var(--dim); letter-spacing:.1em; margin-top:2px;}
+  .shead .bal{display:flex; gap:12px; margin-top:8px; font-size:14px;}
+  .shead .bal span{display:flex; align-items:center; gap:5px;}
+
+  .counter{margin-top:12px;}
+  .counter h3{
+    margin:0 0 6px; font-size:11px; letter-spacing:.2em; color:#e0a95c;
+    border-bottom:2px solid #59371f; padding-bottom:4px;
+  }
+  .up{display:flex; align-items:center; gap:9px; padding:7px 0;}
+  .upic{width:34px; height:34px; flex:none; border:3px solid var(--edge); border-radius:9px;
+    display:flex; align-items:center; justify-content:center; font-size:17px; background:#59371f;}
+  .upinfo{flex:1; min-width:0;}
+  .upname{font-size:13.5px;}
+  .upeff{font-size:10.5px; color:#c0a184; margin-top:2px; font-weight:700;}
+  .buy{
+    border:3px solid var(--edge); border-radius:10px; padding:9px 11px; font-size:12px; font-weight:800;
+    background:linear-gradient(#63d47f,#2e8f48); color:#08240f; box-shadow:0 4px 0 var(--edge);
+    white-space:nowrap; min-width:78px; font-family:inherit;
+  }
+  .buy:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
+  .buy.no{background:linear-gradient(#6a5a4a,#40342a); color:#9c8a76;}
+  .buy.max{background:linear-gradient(#e0b64a,#a07a1a); color:#3a2600;}
+  .up.locked{opacity:.62;}
+  .up.locked .upic{background:#2b1c11;}
+  .lockmsg{font-size:11px; color:#e08a5c; font-weight:700;}
+  .go{
+    width:100%; margin-top:16px; border:4px solid var(--edge); border-radius:14px; padding:15px;
+    font-size:16px; letter-spacing:.12em; font-weight:800; font-family:inherit;
+    background:linear-gradient(#ffc93c,#e07a10); color:#3a1e00; box-shadow:0 6px 0 var(--edge);
+  }
+  .go:active{transform:translateY(4px); box-shadow:0 2px 0 var(--edge);}
+
+  #flash{position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .25s; z-index:30;}
+  #vig{position:fixed; inset:0; pointer-events:none; opacity:0; z-index:29;
+    box-shadow:inset 0 0 55px 2px rgba(210,25,45,.95); transition:opacity .2s;}
+  #boot{position:fixed; inset:0; z-index:40; background:#0b1420; display:flex; align-items:center;
+    justify-content:center; flex-direction:column; gap:8px; color:var(--gold); font-size:22px; letter-spacing:.2em;}
+  #boot.hidden{display:none;}
+  #err{position:fixed; inset:0; z-index:99; background:#180508; color:#ffb0b8; padding:20px;
+    font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow:auto; font-weight:400;}
+  #err.hidden{display:none;}
+</style>
+</head>
+<body>
+
+<script>
+  function showErr(m){
+    var e = document.getElementById('err');
+    if(!e) return;
+    e.classList.remove('hidden');
+    e.textContent += m + '\n\n';
+    var b = document.getElementById('boot');
+    if (b) b.classList.add('hidden');
+  }
+  window.addEventListener('error', function(e){
+    showErr('ERROR: ' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || ''));
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    showErr('PROMISE: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason));
+  });
+</script>
+
+<div id="game"></div>
+
+<div id="hud">
+  <div class="toprow">
+    <div class="panel out" id="ascent">1<small>ASCENT</small></div>
+    <div class="panel" id="res">
+      <div class="r out"><span class="pip g"></span><span id="gold">0</span></div>
+      <div class="r out"><span class="pip i"></span><span id="iron">0</span></div>
+      <div class="r out"><span class="pip r"></span><span id="rune">0</span></div>
+    </div>
+  </div>
+  <div id="progWrap"><div id="prog"><i></i><b class="out">TO THE JOTUNN</b></div></div>
+</div>
+
+<div id="crewBox" class="out"><div id="crewN">3</div><small>CREW</small></div>
+
+<div id="card">
+  <div class="lbl out">EQUIPPED</div>
+  <svg id="wIcon" viewBox="0 0 100 100">
+    <g id="wg">
+      <rect x="45" y="16" width="10" height="72" rx="3" fill="#6b431f" stroke="#120803" stroke-width="5"/>
+      <path id="wblade" d="M30 26 Q50 12 70 26 L70 46 Q50 34 30 46 Z" fill="#c9d6e0" stroke="#120803" stroke-width="5" stroke-linejoin="round"/>
+    </g>
+  </svg>
+  <div id="wName" class="out">RUSTED AXE</div>
+  <div id="dps" class="out">0</div>
+  <div id="forge"><i></i><b class="out">FORGE</b></div>
+</div>
+
+<div id="toast" class="out"></div>
+<div id="hint" class="out">DRAG TO STEER</div>
+<div id="pops"></div>
+
+<div id="camp" class="modal hidden">
+  <div class="sheet">
+    <div class="shead">
+      <h2 class="out" id="campTitle">MOUNTAIN CAMP</h2>
+      <div class="sub" id="campSub">THE CREW RESTS</div>
+      <div class="bal out">
+        <span><i class="pip g"></i> <b id="cGold">0</b></span>
+        <span><i class="pip r"></i> <b id="cRune">0</b></span>
+      </div>
+    </div>
+    <div id="shop"></div>
+    <button class="go out" id="btnGo">SET OUT</button>
+  </div>
+</div>
+
+<div id="vig"></div>
+<div id="flash"></div>
+<div id="boot" class="out">CAPTAIN RUN</div>
+<div id="err" class="hidden"></div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.166.0/build/three.module.js"}}
+</script>
+<script type="module" src="app.js"></script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+</script>
+
+</body>
+</html>

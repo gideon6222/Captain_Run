@@ -1,0 +1,15 @@
+{
+  "name": "Captain Run",
+  "short_name": "Captain Run",
+  "description": "Lead a viking warband up the mountain. Grow the crew, forge the axe, break the jotunn.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#0b1420",
+  "theme_color": "#8fd4ef",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
