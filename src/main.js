@@ -134,22 +134,27 @@ const MOULD_GEO = MOULDS.map(mouldGeometry);
    ever non-empty, so this costs one draw call and switching press mid-run is
    free. */
 const BANDS = T.maxCandles * T.maxLayers;
-/* THE STANDING FORM.
+/* THE STANDING FORM: A ROW, NOT A STACK.
 
-   `discH` is how tall one candle is once the batch is upright, and `standGap`
-   how far apart the discs sit ALONG THE PATH. The second number is the whole
-   trick: at the lying-down spacing of 0.62 a thirty-candle tower would lean
-   eighteen units back, which is a ramp. At 0.17 it is the reference's compact
-   column that still visibly leans and snakes when you turn - and still puts
-   different discs over different pools, which is what keeps weaving alive
-   after ROTATE. */
-const DISC_H = 0.26;
-/* How much fatter a candle is standing than lying. A disc drawn at its lying
-   radius makes a pole: the reference's tower is a stack of wide slices about a
-   third of the lane across, and reading the colour of a stripe from behind is
-   the entire point of standing up. */
-const STAND_FAT = 2.6;
-const STAND_GAP = 0.17;
+   ROTATE stands every candle upright ON THE SPOT, so the batch becomes a line
+   of individual candles marching down the track, each one keeping its own place
+   on the recorded path. It does NOT pile them into a tower.
+
+   The first pass did stack them - candle `i` at height `i` - because a row of
+   upright candles packed tightly and seen from behind reads as a column, and
+   that is what the reference's footage looks like at a glance. It is wrong, and
+   it costs the game the thing standing up is FOR: a candle at head height
+   cannot be dipped by a pool on the ground or stamped by a press, and the whole
+   batch is treated as one object again. A row can be stamped one at a time,
+   which is what the press at 19s in the walkthrough is doing to four candles
+   standing beside it.
+
+   Spacing along the path does NOT change when the batch stands up. It was
+   tighter for a while, and that split the game in two: the simulation lays the
+   candles out at `trailGap` to decide what a pool dips and what an obstacle
+   clips, and the renderer was drawing them somewhere else. Standing changes
+   which way a candle points, nothing else - so every candle still sits at its
+   own point on the trail, and weaving survives ROTATE. */
 
 const C = {
   band: MOULD_GEO.map((g) => new Layer(g, 0xffffff, BANDS, 0.026)),
@@ -226,6 +231,12 @@ const W = {
   /* The skyline: pale stacked-cylinder towers well below the track, like giant
      candle stacks. Straight off the reference, and the only thing that gives
      the sky any depth once a cloud has drifted past. */
+  /* Rings on the surface of the wax. THIS is what makes a pool read as liquid
+     rather than as a coloured slab: not the texture on it but the fact that it
+     ANSWERS. One ring where the ladle pours, one under every candle standing in
+     it, and one that expands from each dip. A photoreal normal map would give
+     the surface relief and still leave it dead. */
+  ripple:   new Layer(new THREE.TorusGeometry(0.5, 0.055, 5, 16), 0xffffff, 90, 0),
   tower:    new Layer(new THREE.CylinderGeometry(1, 1, 1, 10), 0xdff0ff, 96, 0),
   towerTip: new Layer(new THREE.ConeGeometry(0.62, 1.3, 8), 0xffd429, 24, 0),
   stripe:   new Layer(box(T.roadW, 0.06, 0.9), 0xffffff, 60, 0),
@@ -238,6 +249,7 @@ const W = {
   shadow:   new Layer(new THREE.CircleGeometry(0.5, 12), 0x000000, 60, 0),
 };
 W.shadow.mesh.material = new THREE.MeshBasicMaterial({ color: 0x2a1050, transparent: true, opacity: 0.20, depthWrite: false });
+W.ripple.mesh.material = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false });
 
 // the runway slab itself — one draw call
 const road = new THREE.Mesh(box(T.roadW, 1.1, 2400), toon(0x5a27ab));
@@ -523,13 +535,21 @@ class Station {
     this.group.visible = false;
     scene.add(this.group);
   }
-  set(st, t) {
+  set(st, t, px = 0, pz = -999) {
     this.group.visible = true;
     this.group.position.set(0, 0, st.z);
+    /* How far the batch is through this station, 0 before and 1 after. Used to
+       aim the pour: a ladle that tips at nothing while the candles go by
+       underneath is the difference between a machine and a decoration. */
+    const through = clamp((pz - (st.z - T.poolLen / 2)) / T.poolLen, 0, 1);
+    const busy = through > 0.02 && through < 0.98;
     for (let i = 0; i < 2; i++) {
       const h = i ? st.right : st.left;
       const k = KINDS[h.kind];
       const p = this.half[i];
+      /* Which side of the runway this half is on. `set()` is a different scope
+         from the constructor, where the halves were built. */
+      const side = i ? 1 : -1;
       p.sign.material.map = signTex(k.label(h), k.sub(h), k.accent);
       p.sign.material.needsUpdate = true;
 
@@ -553,6 +573,8 @@ class Station {
       p.splash.material.color.setHex(col);
       const sp = 1 + Math.sin(beat * 4.1) * 0.18;
       p.splash.scale.set(sp, sp, 1);
+      /* Under the ladle, wherever it has gone. */
+      p.splash.position.set(p.headG.position.x, 0.42, p.headG.position.z);
 
       p.bowl.visible = p.pour.visible = (k.machine === 'ladle' || k.machine === 'bottle');
       p.gift.visible = k.machine === 'gift';
@@ -563,6 +585,16 @@ class Station {
       if (k.machine === 'ladle' || k.machine === 'bottle') {
         p.bowl.material = toon(k.machine === 'bottle' ? col : 0xeef3f8);
         p.pour.material.color.setHex(col);
+        /* THE LADLE FOLLOWS THE CANDLES. It slides across its own half to sit
+           over wherever the batch is, and rides down the pool with it, so the
+           stream lands on the wax the player is actually dragging through -
+           which is the whole read of "it is pouring on my candles". */
+        const half = T.roadW / 4;
+        const want = clamp(px - side * half, -half + 0.6, half - 0.6);
+        p.headG.position.x = busy ? lerp(p.headG.position.x, want, 0.18) : side * 0.1;
+        p.headG.position.z = busy
+          ? lerp(p.headG.position.z, (through - 0.5) * T.poolLen * 0.75, 0.12)
+          : -T.poolLen / 2 + 1.4;
         p.headG.position.y = 2.90 + Math.sin(beat) * 0.14;
         /* Tipped further, so it reads as pouring rather than as hovering. */
         p.headG.rotation.z = 0.30 + Math.sin(beat * 0.7) * 0.42;
@@ -954,6 +986,36 @@ function emit(x, y, z, n, hex, spread, up) {
       CTMP.r, CTMP.g, CTMP.b);
   }
 }
+/* Rings spreading on the wax. A ring is (place, age, colour); it grows and
+   fades over its life and is then reused. Cosmetic, so `Math.random` is fine
+   for the jitter - none of it decides when anything happens. */
+const RIPPLES = 40;
+const ripples = [];
+for (let i = 0; i < RIPPLES; i++) ripples.push({ live: false, x: 0, z: 0, t: 0, life: 1, r0: 0.3, col: 0xffffff });
+let rippleCursor = 0;
+function ripple(x, z, col, life = 0.9, r0 = 0.28) {
+  const p = ripples[rippleCursor];
+  rippleCursor = (rippleCursor + 1) % RIPPLES;
+  p.live = true; p.x = x; p.z = z; p.t = 0; p.life = life; p.r0 = r0; p.col = col;
+}
+function updateRipples(dt) {
+  for (const p of ripples) {
+    if (!p.live) continue;
+    p.t += dt;
+    if (p.t >= p.life) p.live = false;
+  }
+}
+function writeRipples() {
+  for (const p of ripples) {
+    if (!p.live) continue;
+    const k = p.t / p.life;
+    const r = p.r0 + k * 1.5;
+    QT2.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
+    M2.compose(V2.set(p.x, 0.44, p.z), QT2, V.set(r, r, 1 - k * 0.6));
+    W.ripple.push(M2, CTMP.setHex(p.col).lerp(WHITE, 0.45 + k * 0.4));
+  }
+}
+
 /* Confetti falls from above the sign, which is what makes a glitter station
    read as sprinkling rather than exploding. */
 function confetti(z, n) {
@@ -1385,28 +1447,23 @@ function showRuler(a) {
   requestAnimationFrame(tick);
 }
 
-/* THE REWARD SCREEN, and the multiplier fan on it.
+/* THE REWARD SCREEN.
 
-   The reference gates the fan behind a rewarded video and offers a plain TAKE
-   beside it. There are no ads here, so the wedge is decided by the run itself:
-   the needle lands further round the better the batch did against your best.
-   Same shape, same read, and it rewards the thing the game is about instead of
-   rewarding watching an advert. */
-const FAN = [2, 3, 5, 3, 2];
+   The reference puts a five-wedge multiplier fan here and gates the spin behind
+   a rewarded video. There are no adverts in this game, so there is nothing to
+   gamble against: a wheel that always lands the same is a wheel-shaped lie, and
+   dressing a fixed payout as a gamble is the one bit of the reference worth not
+   copying. What is left is what the screen was actually for - the thing you
+   made, what it was worth, and whether it beat your best. */
 function showReward(a) {
   const beat = a.value > S.bestValue;
-  /* Where the needle lands: the middle wedge is x5 and you only reach it by
-     beating your best by half again. */
-  const ratio = S.bestValue > 0 ? a.value / S.bestValue : 1;
-  const wedge = ratio >= 1.5 ? 2 : ratio >= 1.15 ? (beat ? 1 : 3) : ratio >= 0.8 ? (beat ? 3 : 0) : 4;
-  const mul = FAN[wedge];
 
   $('rwdAmt').textContent = fmt(Math.round(a.value));
   $('rwdHs').classList.toggle('hidden', !beat);
-  /* The product: the best candle in the batch, drawn the way the reference
-     draws it - one big silhouette with a white outline. */
-  /* `TR.bestCandle` returns a VALUE, not a recipe - reading `.layers` off it
-     threw on the first reward screen. The recipe has to be picked here. */
+  $('rwdBest').textContent = fmt(Math.round(Math.max(S.bestValue, a.value)));
+  /* The product: the richest candle in the batch, drawn the way the reference
+     draws it - one big silhouette with a white outline. `TR.bestCandle` returns
+     a VALUE, not a recipe, so the recipe has to be picked here. */
   let b = null, bv = -1;
   for (const r of run.tray) {
     const v = CD.candleValue(r);
@@ -1416,17 +1473,10 @@ function showReward(a) {
   const tall = clamp(60 + (b ? b.layers.length : 1) * 16, 60, 165);
   $('rwdProd').innerHTML =
     `<i style="height:${tall}px;background:#${col.toString(16).padStart(6, '0')}"></i>`;
-  $('rwdPct').textContent = '%' + Math.round(clamp(ratio, 0, 9.99) * 100);
 
-  $('fanNeedle').style.transform = 'rotate(0deg)';
   rewardEl.classList.remove('hidden');
-  /* -72deg to +72deg across five wedges, 36 apart. */
-  setTimeout(() => {
-    $('fanNeedle').style.transform = `rotate(${(wedge - 2) * 36}deg)`;
-  }, 260);
-
-  const paid = Math.round(a.value * mul);
-  $('claimLbl').textContent = (mul > 1 ? 'CLAIM x' + mul + '  ' : 'TAKE ') + fmt(paid);
+  const paid = Math.round(a.value);
+  $('claimLbl').textContent = 'CONTINUE  ' + fmt(paid);
   $('btnClaim').onclick = () => takeReward(a, paid);
 }
 
@@ -1461,7 +1511,14 @@ let dragId = null, dragX = 0, dragStartX = 0;
    preventDefault() on every drag it owns, so a swipe meant to scroll the shop
    was being eaten by the steering. Combined with touch-action on body it made
    the upgrade list unscrollable, and the START button sits below it. */
-const onUI = (e) => !!(e.target && e.target.closest && e.target.closest('.modal, .uibtn'));
+/* Every control that sits over the world has to be listed here, and the list is
+   the bug: the two boost cards on the home screen were not, so a tap on CANDLE
+   or CASH fell through to `ptDown`, which starts the run - the cards could not
+   be bought at all. `.uibtn` covers the gear, `.modal` the sheets; anything
+   else drawn over the game needs adding, so the safest selector is the one that
+   names the home layer itself. */
+const onUI = (e) => !!(e.target && e.target.closest
+  && e.target.closest('.modal, .uibtn, #home button'));
 
 function ptDown(e) {
   /* Audio still needs the gesture even when the tap was on a menu - Chrome
@@ -1625,7 +1682,11 @@ function stationFx(h, x, z) {
   const k = KINDS[h.kind];
   if (run.time - lastFx < 0.09) return;
   lastFx = run.time;
-  if (k.n === 'WAX') { emit(x, 0.5, z, 6, k.colour(h), 0.7, 4); sfx.dip(); }
+  if (k.n === 'WAX') {
+    emit(x, 0.5, z, 6, k.colour(h), 0.7, 4);
+    ripple(x, z, k.colour(h));
+    sfx.dip();
+  }
   else if (k.n === 'GLITTER') { confetti(z, 12); sfx.sparkle(); }
   else if (k.n === 'PRESS') { emit(x, 0.6, z, 5, 0xb9f0ff, 0.7, 4); sfx.press(); shake(0.12); }
   else { emit(x, 0.7, z, 5, k.colour(h), 0.7, 4); sfx.wrap(); }
@@ -1807,12 +1868,12 @@ function writeStack() {
   C.wick.reset(); C.ribbon.reset(); C.bow.reset(); C.spark.reset();
   let fN = 0;
 
-  /* Lying down the candles trail at `trailGap`; standing they pack to
-     `STAND_GAP` and climb. `standT` blends between the two, so the batch rears
-     up rather than teleporting. */
+  /* `standT` eases 0 to 1 as the batch rises onto its ends. It is the ONLY
+     thing the standing form changes, and nothing outside the renderer and the
+     camera reads it - so a harness that never draws still gets an identical
+     simulation. */
   const t = run.standT;
-  const gap = lerp(T.trailGap, STAND_GAP, t);
-  const n = ST.layout(run.trail, count(), stackPos, gap);
+  const n = ST.layout(run.trail, count(), stackPos);
   const lit = run.gift;
 
   for (let i = 0; i < n; i++) {
@@ -1830,47 +1891,47 @@ function writeStack() {
        because that is what the reference's tower is - a stripe per candle - and
        it is what makes weaving legible from the side: a batch that took two
        pools comes out banded, a batch that took one comes out plain. */
-    const rr = CD.candleRadius(r);
-    const standY = DISC_H * (i + 0.5);
-    const m = MOULDS[r.mould];
-
     if (t > 0.02) {
-      /* Twisted a little further with every disc, so a TWIST or STAR mould
-         reads as a spiral up the tower rather than as a stack of identical
-         lumps. This is the mould being visible, which is the whole point of
-         standing up. */
-      QT.setFromAxisAngle(V.set(0, 1, 0), i * (0.12 + m.twist * 0.35));
-      const h = DISC_H * 0.94 * (1 + m.bulge * 0.3);
-      const wide = rr * 2 * lerp(1, STAND_FAT, t);
-      M2.compose(V2.set(p.x, standY * t + (rad[0] + bob) * (1 - t), p.z), QT,
-        V.set(wide, h * t + bh * (1 - t), wide));
-      CTMP.setHex(WAXES[CD.topWax(r)].col);
-      if (r.glitter > 0) CTMP.lerp(WHITE, 0.10 * r.glitter);
-      if (r.scent > 0) CTMP.lerp(SCENTC, 0.16);
-      band.push(M2, CTMP);
+      /* Upright, and the bands run UP the candle - which is what a dipped
+         candle actually looks like, and what the loaf could only show along its
+         length. Standing is therefore also the moment the player can finally
+         read every band they put on. */
+      const m = MOULDS[r.mould];
+      /* Turned a little further each candle so a TWIST or STAR mould reads as a
+         rank of stamped shapes rather than a row of identical lumps. */
+      QT.setFromAxisAngle(V.set(0, 1, 0), i * (0.15 + m.twist * 0.30));
+      const upH = len * 0.92;                 // the candle's length becomes its height
+      for (let b = 0; b < r.layers.length; b++) {
+        const y = (xs[b] + bh * 0) * t;
+        M2.compose(V2.set(p.x, y * 0 + (xs[b]) * t + (rad[b] + bob) * (1 - t), p.z), QT,
+          V.set(rad[b] * 2, bh, rad[b] * 2));
+        CTMP.setHex(WAXES[r.layers[b]].col);
+        if (r.glitter > 0) CTMP.lerp(WHITE, 0.10 * r.glitter);
+        if (r.scent > 0) CTMP.lerp(SCENTC, 0.16);
+        band.push(M2, CTMP);
+      }
+      void upH;
 
-      /* Wrapped: a ribbon round the disc and a bow on it, per candle, which is
-         what the reference ties at its WRAP station. */
+      /* Wrapped: a ribbon round the middle of the candle and a bow on top of
+         it, per candle, which is what the reference ties at WRAP. */
       if (wrapped) {
         const w = WRAPS[r.wrap];
-        M2.compose(V2.set(p.x, standY * t, p.z), QT.identity(),
-          V.set(rr * STAND_FAT * 2.16, DISC_H * 0.30, rr * STAND_FAT * 2.16));
+        M2.compose(V2.set(p.x, len * 0.42 * t, p.z), QT.identity(),
+          V.set(rad[0] * 2.3, len * 0.16, rad[0] * 2.3));
         C.ribbon.push(M2, CTMP.setHex(w.col));
-        if (i === 0 || i === n - 1) {
-          M2.compose(V2.set(p.x, standY * t + DISC_H * 0.3, p.z), QT.identity(),
-            V.set(rr * STAND_FAT * 1.5, DISC_H * 0.75, rr * STAND_FAT * 0.5));
-          C.bow.push(M2, CTMP.setHex(w.bow));
-        }
+        M2.compose(V2.set(p.x, len * 0.42 * t + len * 0.11, p.z), QT.identity(),
+          V.set(rad[0] * 1.9, len * 0.10, rad[0] * 0.7));
+        C.bow.push(M2, CTMP.setHex(w.bow));
       }
 
-      /* The wick is on TOP of the tower, and only there. */
-      if (i === n - 1) {
-        M2.compose(V2.set(p.x, standY * t + DISC_H * 0.9, p.z), QT2.identity(),
-          V.set(rr * STAND_FAT * 0.9, T.wickH * 2.0, rr * STAND_FAT * 0.9));
-        C.wick.push(M2);
-      }
+      /* The wick is on top of EVERY candle now, because every candle is a
+         candle again rather than a slice of one. */
+      M2.compose(V2.set(p.x, len * t + T.wickH * 0.4, p.z), QT2.identity(),
+        V.set(rad[0] * 1.4, T.wickH * 1.5, rad[0] * 1.4));
+      C.wick.push(M2);
+
       if (r.glitter > 0 && i % 2 === 0) {
-        M2.compose(V2.set(p.x + rr * STAND_FAT * 1.05, standY * t, p.z), QT.identity(),
+        M2.compose(V2.set(p.x + rad[0] * 1.15, len * 0.6 * t, p.z), QT.identity(),
           V.set(0.10, 0.10, 0.10));
         C.spark.push(M2, CTMP.setHex(0xffffff));
       }
@@ -1910,13 +1971,15 @@ function writeStack() {
 
     QT2.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
     M2.compose(V2.set(p.x, 0.03, p.z), QT2,
-      V.set(lerp(len * 1.05, rr * STAND_FAT * 2.2, t), lerp(T.trailGap * 1.6, STAND_GAP * 2.2, t), 1));
+      V.set(lerp(len * 1.05, rad[0] * 2.6, t), T.trailGap * 1.6, 1));
     W.shadow.push(M2);
 
     if (lit && i < Math.floor(run.giftT * 11)) {
       const fs = 0.3 + Math.sin(run.time * 19 + i) * 0.03;
+      /* Standing, the flame sits on top of the candle; lying, it sits at the
+         wick end of the loaf. */
       const ty = t > 0.5
-        ? standY * t + DISC_H * 0.8
+        ? len * t + T.wickH * 0.9
         : (wrapped ? rad[0] * 2.1 : rad[0] * 2) + 0.2;
       const fx = t > 0.5 ? p.x : p.x + len / 2 - 0.2;
       M2.compose(V2.set(fx, ty + fs, p.z), QT2.identity(), V.set(fs, fs * 2.0, fs));
@@ -1942,7 +2005,8 @@ function writeStack() {
 }
 
 function writeWorld() {
-  for (const k in W) if (k !== 'shadow') W[k].reset();
+  for (const k in W) if (k !== 'shadow' && k !== 'ripple') W[k].reset();
+  W.ripple.reset();
 
   // lane stripes, the main sense of speed, and the rails beside them
   const s0 = Math.floor((run.z - 16) / 3.2);
@@ -2094,7 +2158,7 @@ function writeWorld() {
     }
   }
 
-  for (const k in W) W[k].flush();
+  for (const k in W) if (k !== 'ripple') W[k].flush();
 }
 
 function writeStations() {
@@ -2102,11 +2166,15 @@ function writeStations() {
   for (const st of stations) {
     if (i >= stationPool.length) continue;
     if (st.z < run.z - T.poolLen || st.z > run.z + 120) continue;
-    stationPool[i].set(st, run.time);
+    /* The leader's x and how far it is through the pool, so the ladle can pour
+       ON the candles rather than at a fixed spot in the wax. */
+    stationPool[i].set(st, run.time, run.x, run.z);
     i++;
   }
   for (let k = i; k < stationPool.length; k++) stationPool[k].hide();
 }
+
+function writeRipplesFlush() { W.ripple.flush(); }
 
 function writeGlitter() {
   let n = 0;
@@ -2176,6 +2244,11 @@ function tick(dt, draw = true) {
      that never draws still gets identical simulation. */
   run.standT = clamp(run.standT + (run.standing ? dt * 2.2 : -dt * 3), 0, 1);
   updateGlitter(dt);
+  updateRipples(dt);
+  /* The wax FLOWS. One shared texture scrolled once a frame, which costs
+     nothing and does more for "this is liquid" than any map could: a still
+     surface is a painted floor however it is shaded. */
+  if (SWIRL) { SWIRL.offset.y = (SWIRL.offset.y - dt * 0.22) % 1; }
 
   /* At the table the camera swings around in front of the stack, so the player
      is looking at the row of candles they made, lit, rather than at the back of
@@ -2218,9 +2291,13 @@ function tick(dt, draw = true) {
        back with `standT` as well as with the tail. Without this the tower's top
        leaves the frame the moment ROTATE fires, which is exactly the moment the
        player wants to look at it. */
-    const up = run.standT * clamp(count() * DISC_H, 0, 9);
-    camPos.set(run.x * 0.55, 4.6 + tail * 0.20 + up * 0.55,
-      run.z - 12.8 - tail * 0.60 - up * 0.75);
+    /* A standing rank is taller than a lying loaf but nothing like as tall as
+       the stacked tower this used to build, so the camera only needs a nudge.
+       Pulling back as far as a nine-unit tower did put the whole runway in the
+       distance and made the candles unreadable. */
+    const up = run.standT * 2.2;
+    camPos.set(run.x * 0.55, 4.6 + tail * 0.20 + up,
+      run.z - 12.8 - tail * 0.60 - up * 1.4);
   }
   camera.position.lerp(camPos, smooth(done ? 2.2 : 9, dt));
   if (run.shake > 0) {
@@ -2242,6 +2319,8 @@ function tick(dt, draw = true) {
   writeStack();       // pushes stack shadows into W.shadow
   writeWorld();       // ...so W is flushed after it
   writeStations();
+  writeRipples();
+  writeRipplesFlush();
   writeGlitter();
   updatePops(dt);
 

@@ -309,28 +309,12 @@
   }
   .rwdpct{font-size:22px; font-weight:800; text-shadow:0 3px 0 rgba(0,0,0,.28);}
 
-  /* The multiplier fan: five wedges and a needle. */
-  .fan{position:relative; width:230px; height:118px; margin-top:2px;}
-  .fanwedges{
-    position:absolute; inset:0; border-radius:115px 115px 0 0; overflow:hidden;
-    border:4px solid var(--edge); border-bottom:none;
-    display:flex;
+  .rwdrow{
+    display:flex; align-items:center; gap:14px; margin-top:4px;
+    font-size:15px; letter-spacing:.08em; color:#ffd8f4;
+    text-shadow:0 2px 0 rgba(0,0,0,.25);
   }
-  .fanwedges i{
-    flex:1; display:flex; align-items:flex-end; justify-content:center; padding-bottom:8px;
-    font-style:normal; font-weight:800; font-size:15px; color:#fff;
-    text-shadow:0 2px 0 rgba(0,0,0,.3); border-right:3px solid rgba(40,12,60,.35);
-  }
-  .fanwedges i:last-child{border-right:none;}
-  .fanwedges .w2,.fanwedges .w2b{background:#2fbf5c;}
-  .fanwedges .w3,.fanwedges .w3b{background:#2f7fd6;}
-  .fanwedges .w5{background:#8a3fd6;}
-  .needle{
-    position:absolute; left:50%; bottom:0; width:8px; height:96px; margin-left:-4px;
-    background:linear-gradient(#ffe06a,#e8a917); border:3px solid var(--edge);
-    border-radius:5px; transform-origin:50% 100%;
-    transition:transform 1.1s cubic-bezier(.2,.9,.2,1);
-  }
+  .rwdrow b{color:#fff; font-size:19px;}
   .claim{
     margin-top:14px; min-width:210px; font-family:inherit; font-weight:800; font-size:17px;
     letter-spacing:.08em; cursor:pointer; padding:15px 22px;
@@ -528,14 +512,13 @@
     <div class="rwdcoins"><i class="coin big"></i><b id="rwdAmt">0</b></div>
     <div class="rwdhs hidden" id="rwdHs">NEW HIGH SCORE!</div>
     <div class="rwdprod" id="rwdProd"></div>
-    <div class="rwdpct" id="rwdPct">%0</div>
-    <div class="fan" id="fan">
-      <div class="fanwedges">
-        <i class="w2">x2</i><i class="w3">x3</i><i class="w5">x5</i><i class="w3b">x3</i><i class="w2b">x2</i>
-      </div>
-      <div class="needle" id="fanNeedle"></div>
-    </div>
-    <button class="claim" id="btnClaim"><span id="claimLbl">TAKE 0</span></button>
+    <!-- The reference's multiplier fan is a rewarded-video gamble: you watch an
+         advert to spin it. There are no adverts here, so there is nothing to
+         gamble against and a wheel that always pays the same is a wheel-shaped
+         lie. What is left is the part that was doing the work anyway - what you
+         made, what it was worth, and whether it beat your best. -->
+    <div class="rwdrow"><span>BEST</span><b id="rwdBest">0</b></div>
+    <button class="claim" id="btnClaim"><span id="claimLbl">CONTINUE</span></button>
   </div>
 </div>
 

@@ -71,8 +71,8 @@ npm run size       # bundle size guard, fails in both directions
 
 ## The player object has TWO FORMS, and ROTATE changes it
 
-Lying down it is a slab of candles along the track. **ROTATE stands it up** into a tall
-tower of discs, one per candle, and that is the most dramatic thing in a run. `REFERENCE.md`
+Lying down it is a slab of candles along the track. **ROTATE stands them up** — every candle
+on its own feet, in a row — and that is the most dramatic thing in a run. `REFERENCE.md`
 has the frames: flat at 15.5s in the walkthrough, tower at 15.8s, with the plate still behind
 it. It used to turn the tray end for end, which the player cannot see happening — and that is
 why the stations read as power-ups rather than as machinery.
@@ -80,20 +80,40 @@ why the stations read as power-ups rather than as machinery.
 - **`run.standing` and `run.standT`.** The second is the eased 0→1 blend; nothing but the
   renderer and the camera read it, so a harness that never draws still gets an identical
   simulation.
-- **The tower keeps the trail.** `ST.layout` takes a `gap`, and standing packs to
-  `STAND_GAP` (0.17) instead of `trailGap` (0.62). At the lying spacing a thirty-candle tower
-  leans eighteen units back — a ramp, not a tower. Packing tighter keeps the reference's
-  compact leaning column *and* keeps different discs over different pools, which is the whole
-  weaving mechanic.
-- **One disc per candle, not per layer.** That is what the reference's tower is — a stripe
-  per candle — and it is what makes weaving legible from behind.
-- **`STAND_FAT`.** A disc drawn at its lying radius makes a pole. The tower is a stack of
-  wide slices about a third of the lane across.
+- **A ROW, not a stack.** The first pass piled them into a tower — candle *i* at height *i* —
+  because a dense rank of upright candles seen from behind reads as a column, which is what
+  the footage looks like at a glance. It is wrong, and it costs standing up the thing it is
+  *for*: a candle at head height cannot be dipped by a pool on the ground or stamped by a
+  press, and the batch is one object again. A row gets stamped one at a time, which is what
+  the press at 19s in the walkthrough is doing to four candles standing beside it.
+- **Spacing does not change between the forms.** It was tighter standing for a while, and
+  that split the game in two: the simulation lays candles out at `trailGap` to decide what a
+  pool dips and what an obstacle clips, and the renderer drew them somewhere else. Six percent
+  is not much, but *what you see is not what collides* has no small version.
+- **Bands run UP a standing candle**, which is what a dipped candle looks like — and standing
+  is therefore the moment the player can finally read every band they put on.
 - **The press has a real die**, one mesh per mould shape, and shows only the one being
   pressed — so the machine over the track *is* the shape you get.
 - **The vat is a tank**, not a decal: a box standing proud of the road with a rim in a darker
   shade of its own wax, under a chrome ladle and a thick pour, with a ring where it lands. A
   flat plane on the road surface reads as paint.
+- **A liquid is made of motion and answers, not of texture.** The wax scrolls its surface
+  once a frame and spreads a ring wherever a candle goes in and wherever the ladle pours, and
+  the ladle slides across its half and rides down the pool to stay over the batch. A
+  photoreal normal map would give the surface relief and leave it dead — and there is no
+  usable liquid map on the CC0 sites this project uses anyway (searched: no `water`, no
+  `liquid`, no `ripple`; plaster and paint read as a rough wall, not molten wax).
+
+## Every control drawn over the game must be listed in `onUI`
+
+The steering handler lives on `window` so a drag can start anywhere, and `onUI()` is the only
+thing that separates a control from the world. Anything new drawn over the game has to be
+added to its selector or it is not clickable — taps fall through to `ptDown`.
+
+This has now shipped as a bug **twice**: the workshop that would not scroll, and the two boost
+cards on the home screen, which could not be bought at all because tapping either one started
+the run. `the boost cards can actually be bought, and do not start the run` is the standing
+guard, verified by reverting the selector and watching it fail.
 
 ## The screens are the reference's, not ours
 

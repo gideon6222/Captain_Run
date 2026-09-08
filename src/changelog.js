@@ -8,9 +8,21 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '6.0.0';
+export const VERSION = '6.1.0';
 
 export const CHANGELOG = [
+  {
+    version: '6.1.0', date: '2026-09-08', title: 'Standing in a row',
+    notes: [
+      'Fixed: the CANDLE and CASH cards could not be bought \u2014 tapping either one started the run instead.',
+      'When the batch stands up it now stands in a ROW, every candle on its own feet, so the press can stamp them one at a time.',
+      'Standing candles show their bands running up them, so you can finally read every colour you dipped.',
+      'Every standing candle has its own wick and its own flame at the gift table.',
+      'The wax flows, and it answers: rings spread where a candle goes in and where the ladle pours.',
+      'The ladle follows your candles across the pool and down it, so the stream lands on the batch instead of on empty wax.',
+      'The end-of-run screen is a plain continue now \u2014 what you earned and your best. The multiplier wheel is gone; it was a rewarded-video gamble and there are no adverts here.'
+    ]
+  },
   {
     version: '6.0.0', date: '2026-09-08', title: 'It stands up',
     notes: [

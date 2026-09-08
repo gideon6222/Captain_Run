@@ -377,11 +377,14 @@ test('the reward screen pays what the run was worth, and taking it moves on',
     await expect(page.locator('#rwdAmt')).not.toHaveText('0');
     await expect(page.locator('#rwdHs'), 'the first run always beats a best of zero')
       .not.toHaveClass(/hidden/);
-    /* Five wedges and a needle, which is the shape of the reference's. */
-    await expect(page.locator('#fan .fanwedges i')).toHaveCount(5);
+    /* The reference's multiplier fan is a rewarded-video gamble and there are
+       no adverts here, so there is nothing to gamble against. It must stay
+       gone: a wheel that always pays the same is a wheel-shaped lie. */
+    await expect(page.locator('#fan')).toHaveCount(0);
+    await expect(page.locator('#rwdBest')).not.toHaveText('0');
 
     const label = await page.locator('#claimLbl').textContent();
-    expect(label, `claim button read "${label}"`).toMatch(/^(TAKE|CLAIM x\d)/);
+    expect(label, `claim button read "${label}"`).toMatch(/^CONTINUE/);
 
     const coinsBefore = await page.evaluate(() => (window as any).__CR.S.coins);
     await page.locator('#btnClaim').click();
@@ -528,14 +531,17 @@ test('every render layer flushes what the model holds, lying down and standing u
     .toBe(flat.layers);
   expect(flat.outlines, 'and an outline hull for each').toBe(flat.drawn);
 
-  /* STANDING it is one disc per candle, because that is what the reference's
-     tower is: a stripe per candle, not per layer. Both forms have to be
-     asserted or the flush that goes missing is the one in the form nobody
-     tested. */
+  /* STANDING it is the same bands, turned through ninety degrees and running UP
+     each candle - which is what a dipped candle actually looks like, and the
+     reason standing up is the moment the player can finally read every band
+     they put on. Both forms have to be asserted or the flush that goes missing
+     is the one in the form nobody tested. */
   const up = await read(true);
-  expect(up.drawn, 'one disc per candle when the batch is stood up').toBe(up.count);
+  expect(up.drawn, 'one band per wax layer, standing as well as lying').toBe(up.layers);
   expect(up.outlines).toBe(up.drawn);
-  expect(up.wicks, 'and exactly one wick, on top of the tower').toBe(1);
+  /* A wick on every candle, because standing they are candles again rather
+     than slices of one. */
+  expect(up.wicks, 'a wick on every candle when stood up').toBe(up.count);
 });
 
 test('draw calls stay in budget with the runway full', async ({ page }) => {
@@ -668,6 +674,37 @@ test('pause actually stops the simulation, and resume starts it again',
        is inside the round-trip latency of asking the page for its state, which
        means such a test measures the harness rather than the game. The two
        assertions above are the ones that can actually fail. */
+  });
+
+test('the boost cards can actually be bought, and do not start the run',
+  async ({ page }) => {
+    /* They could not. The steering handler lives on `window` so a drag can start
+       anywhere, and `onUI()` decides what is a control rather than the world -
+       the two cards were not in its selector, so every tap on CANDLE or CASH
+       fell through to `ptDown` and began the level instead of buying anything.
+       Same failure as the workshop that would not scroll: a new thing drawn over
+       the game has to be told to the input layer. */
+    await bootLive(page);
+    await page.evaluate(() => { (window as any).__CR.S.coins = 99999; });
+    await page.evaluate(() => (window as any).__CR.toHome());
+
+    const coins = () => page.evaluate(() => (window as any).__CR.S.coins);
+    const running = () => page.evaluate(() => (window as any).__CR.run.active);
+    const before = await coins();
+
+    await page.locator('#boostCandle').click();
+    expect(await running(), 'buying a boost must not start the level').toBe(false);
+    expect(await coins(), 'and must cost money').toBeLessThan(before);
+    await expect(page.locator('#boostCandleC')).toHaveText('ON');
+
+    const mid = await coins();
+    await page.locator('#boostCash').click();
+    expect(await running()).toBe(false);
+    expect(await coins()).toBeLessThan(mid);
+
+    /* And the world underneath still starts the run. */
+    await page.mouse.click(190, 300);
+    expect(await running(), 'a tap on the runway still starts it').toBe(true);
   });
 
 test('the gear is up over the world and down over a sheet', async ({ page }) => {
