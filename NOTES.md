@@ -4,10 +4,11 @@ Per-game truth. Where this and the shared phone-game-studio pipeline disagree, *
 
 | Topic | Status |
 |---|---|
-| Stack | Five static files at the repo root, no build step. The shared pipeline is accurate for this game (unlike Coreward, which outgrew it). |
-| three.js | 0.166.0 from jsdelivr via importmap. Same URL is in `sw.js` ASSETS. |
-| Deploy | Push to `main`, **bump `CACHE` in `sw.js` every time**, close and reopen the app twice on the phone. |
-| Debug seam | `?debug` on the URL exposes `window.__CR` — `advance(seconds)`, `state()`, `steer(x)`, and the layer objects. Used to test without a visible tab, since rAF does not fire in a hidden one. |
+| Stack | Vite + `vite-plugin-pwa`, TypeScript for the extracted modules, Playwright smoke tests, node unit tests, a bundle size guard and CI. Migrated 2026-09-07; see `PIPELINE.md` in `gamedev-notes` for the shared shape. |
+| Source | `src/main.js` is the game and is being emptied module by module. `src/tuning.ts`, `src/util.ts`, `src/save.ts` and `src/changelog.js` are out and unit-tested. Every further extraction lands as `.ts`. |
+| three.js | 0.166.0 as an npm dependency, split into its own chunk. No importmap, no CDN. |
+| Deploy | Push to `main`. CI typechecks, unit-tests, size-guards and smoke-tests the real build, then deploys to Pages. **No cache version to bump** — Workbox generates the precache from the hashed output. |
+| Debug seam | `?debug` exposes `window.__CR` — `freeze()`, `advance(seconds)`, `state()`, `steer(x)`, `T`, `enemies()`, `gates()`, `boss()` and the layer objects. `freeze()` first: it stops the rAF tick and restarts the ascent, so `advance(n)` is exactly n seconds from a clean start rather than n seconds after however long the machine took to boot. |
 
 ## What the game is
 
@@ -25,8 +26,11 @@ Three resources with three distinct jobs, per CRAFT.md's "one resource is no res
 
 ## Graphics approach (2026-09-07)
 
-Everything is procedural geometry. No models, no textures, no external assets — which is
-forced anyway, because the GitHub connector corrupts binary pushes.
+Everything is procedural geometry. No models, no textures, no external assets. That was
+originally forced — pushes went through the GitHub connector, which corrupts binaries — and
+it no longer is: the repo is local with a real build, so glTF is available if a model would
+earn its place. See `ASSETS.md` in `gamedev-notes`. The toon-and-outline look is coherent as
+it stands, so this is an option rather than a plan.
 
 - **`MeshToonMaterial` + a runtime `DataTexture` gradient map** with four hard bands
   (`0.36 / 0.62 / 0.84 / 1.0`), `NearestFilter` on both min and mag or the banding vanishes.
@@ -47,26 +51,65 @@ forced anyway, because the GitHub connector corrupts binary pushes.
 
 ## Tuning as shipped
 
-Everything lives in the `T` object at the top of `app.js`.
+Everything lives in the `T` object in `src/tuning.ts`, along with the derived stats, which
+are pure functions taking the upgrade table as an argument — so `npm test` can check the
+curves without booting the game.
 
 - Road 6.2 wide, steer clamped to ±1.5, run speed 11 u/s.
 - Ascent = 44 chunks of 12 units ≈ 50 s, then the boss.
-- Gates at chunks 4, 11, 19, 27, 35. 70% are two upside options (`+N` vs `×2`, a real
-  decision since which is better depends on current crew); 30% pair `×2` against a penalty.
+- Gates at chunks 4, 11, 19, 27, 35. 68% are two upside options (`+N` vs `×2`, a real
+  decision since which is better depends on current crew); 32% pair `×2` against a penalty.
   A gate can never take the crew below 1.
 - Draugr from chunk 6, HP `26 × ascentScale × (1 + chunk×0.14)`, and they **charge** at
   6 u/s once within 34 units. Before that they died at maximum range and combat was invisible.
+- Brutes past chunk 12, 28% of spawns: twice a grunt's HP, two crew per hit, 1.35× rig.
+  52 HP, not the 88 it was written with — see the RNG note below for why that number had
+  never actually been played.
+- One volley is five axes across the five nearest draugr, or all five into the Jotunn once
+  it is armed. Kill *rate*, not damage, is the binding constraint on a crowd.
 - Crew cap 12, +2 per Mead Hall level to 26 (= `T.visCrew`, so the number on screen is
   always the truth). Overflow from a gate converts to gold.
 - Boss 9000 HP at ascent 1, slams for 2 crew every 3.4 s, stands off at 10.5 units.
 - Everything hostile scales `2.02^(ascent-1)`; one weapon tier is `2.15`, so buying one tier
   per ascent roughly keeps pace and costs (`2.35^t`) slowly outrun income.
 
+## The RNG returned half its range (2026-09-07)
+
+Worth reading before touching anything seeded. `hash(a, b)` used **signed** right shifts:
+
+```js
+h = (h ^ (h >> 13)) * 1274126177;
+return ((h ^ (h >> 16)) >>> 0) / 4294967296;
+```
+
+A signed shift sign-extends, so `h ^ (h >> 16)` always cleared the top bit and the function
+could never return above 0.5 — measured maximum 0.499999 over 800,000 samples. Every spawn
+decision in the game goes through it. Nothing errored, nothing looked broken, and it silently
+deleted three mechanics: brutes (`> 0.72`), punishing gates (`> 0.68`) and the good gate
+swapping sides (`> 0.5`) had never once fired, and everything placed with
+`(hash() - 0.5) * width` came out negative, pinning draugr, crates and shrines to the left
+half of the road. The multiply overflowed a double's exact range too, rounding away the low
+bits the next xor-shift mixes down; `Math.imul` now.
+
+Two consequences worth remembering:
+
+- **A mechanic that never fires fails as absence.** There is no error and nothing missing on
+  screen — the game just plays differently than it reads. Playtesting cannot see it. The only
+  thing that catches it is testing the random source itself, which `test/util.test.mjs` now
+  does, plus e2e tests asserting the mechanics actually occur in a run.
+- **Balance tuned against a broken source is tuned against a different game.** Turning the
+  mechanics on made the first ascent unwinnable, and fixing that surfaced two real design
+  bugs underneath: the warband shot the nearest draugr rather than the boss it was told to
+  fight, and a whole volley landed on one target so kills were capped at 2.4 a second no
+  matter how much damage each axe carried.
+
 ## Known gaps / next
 
-1. **Balance past ascent 3 is modelled, not played.** In-run forge tiers stay ~4 per run
-   regardless of ascent, so permanent tiers are the only thing that outpaces the curve.
-   Watch for a wall around ascent 5–7.
+1. **Balance is modelled, not played.** A greedy campaign sim through the debug seam — buy
+   the cheapest useful upgrade, weapon first, no steering — clears ascents 1 to 7 and stalls
+   on the eighth with everything bought, which is a reasonable place for the blessings to
+   start mattering. It does not spend runes, and it never chooses a gate, so a real player
+   should get further. Nobody has played past ascent 3.
 2. **No prestige layer yet.** Runes and blessings are the only permanent meta. A voyage
    reset (keep relics, reset ascents, gain a multiplier) is the obvious next system.
 3. **No offline income.** Deliberate for v1.

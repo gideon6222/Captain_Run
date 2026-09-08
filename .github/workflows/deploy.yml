@@ -1,0 +1,127 @@
+name: Test and deploy
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# GITHUB_TOKEN permissions needed by actions/deploy-pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it half way.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Typecheck and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      # Pure functions only: the tuning curves, derived stats and the seeded
+      # hash every spawn decision goes through. Fast, and they cannot catch a
+      # wiring bug - that is what the smoke job is for.
+      - run: npm test
+
+  smoke:
+    name: Smoke test the built game
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # Fail loudly if the service worker did not pick up the hashed bundle,
+      # rather than shipping a PWA that silently precaches nothing. This is the
+      # failure the hand-written sw.js used to cause by forgetting a version
+      # bump, and it looked exactly like "my update did not deploy".
+      - name: Verify the precache manifest
+        run: |
+          test -f dist/sw.js || { echo "dist/sw.js missing"; exit 1; }
+          grep -q 'assets/index-.*\.js' dist/sw.js || { echo "hashed bundle missing from precache"; exit 1; }
+          echo "precache manifest looks right:"
+          grep -o '{url:"[^"]*"' dist/sw.js
+
+      # Fails in both directions. A shrink means code went missing, which is
+      # the live risk while main.js is being split module by module.
+      - name: Bundle size guard
+        run: npm run size
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      # Boots the real build and plays it. The load-bearing one records the
+      # whole simulation after forty seconds and asserts it exactly - the game
+      # is deterministic given a fresh save, so that is a golden test for the
+      # entire game, and it is what makes splitting main.js safe to attempt.
+      - name: Smoke test
+        run: npm run e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  build:
+    name: Build and upload Pages artifact
+    needs: smoke
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # enablement turns Pages on for this repo if it is off, which it is:
+      # Captain Run has never actually been served, despite the URL in the
+      # notes. Harmless once it is on.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

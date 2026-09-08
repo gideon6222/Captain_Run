@@ -13,69 +13,80 @@ measured limits), `CRAFT.md` (design lessons, including several drawn from this 
 
 ---
 
-## Current shape
+## Stack
 
-Five static files, no build step, no local git repo:
+Migrated off five static files on 2026-09-07. Vite 5 with `base: './'`, three.js pinned to
+0.166.0 in its own chunk, `vite-plugin-pwa` generating the service worker, TypeScript for
+extracted modules, Playwright against the production build, node unit tests over the pure
+layer, a per-chunk bundle size guard, and CI that runs all of it before deploying to Pages.
+
+```bash
+npm run dev        # play it locally
+npm test           # unit tests over the pure modules (node --test + esbuild)
+npm run typecheck  # tsc over src, then over e2e and test
+npm run e2e        # Playwright against the real build
+npm run size       # bundle size guard, fails in both directions
+```
+
+## Files
 
 | File | What it is |
 |---|---|
 | `index.html` | Shell: all CSS, HUD, camp screen, error overlay, SW registration |
-| `app.js` | **Everything else.** ~1,600 lines: state, save, toon materials, rigs, spawning, the run loop, the camp |
-| `sw.js` | Hand-written service worker — bump the cache version or the phone keeps the old build |
-| `manifest.webmanifest`, `icon.svg` | PWA install |
-| `NOTES.md` | Decisions specific to this game and what to do next |
+| `src/main.js` | The game. Still ~1,550 lines and shrinking — see "The split" below |
+| `src/tuning.ts` | `T`, tiers, palettes, and the derived stats as pure functions |
+| `src/util.ts` | `clamp`, `lerp`, `smooth`, `hash`, `fmt` |
+| `src/save.ts` | The one localStorage key, and a defensive loader |
+| `src/changelog.js` | `VERSION` and the patch notes shown in the camp |
+| `public/` | manifest, icon, and the legacy service-worker cleanup script |
+| `test/` | `harness.mjs` bundles `pure-entry.ts` with esbuild so node can import TS |
+| `e2e/smoke.spec.ts` | Ten tests against the built game, including the whole-game golden |
+| `NOTES.md` | Design decisions, tuning as shipped, and what to do next |
 
----
+## The split
 
-## This game owes a migration
+`main.js` is being emptied module by module rather than converted in one pass, because a
+big-bang rewrite of live game code has no way to prove it changed nothing. Every extraction
+lands as `.ts` and gets unit tests; `main.js` keeps thin wrappers so call sites do not churn.
+`tsconfig.json` has `checkJs: false` so the untouched JS does not drown the typecheck.
 
-**No game here is a one-off** — every one is meant to be added to indefinitely. Captain Run
-predates that rule and is still on the stack the rule replaced. Three things are missing and
-each one costs something real:
+Imports of the TS modules from `main.js` are **extensionless** (`'./util'`, not `'./util.js'`)
+— Vite only rewrites `.js` to `.ts` for TS importers. When `main.js` is gone, they become
+`.js` like the TS files' own imports.
 
-1. **No local git repo.** No history, no branches, no revert. This is the one that matters
-   most: a bad change currently has no undo.
-2. **No build, no tests, no CI.** `app.js` is 1,600 lines in one file with no golden tests,
-   so a refactor has nothing to check it against and a deploy has no gate.
-3. **A hand-written `sw.js`.** Every change needs a manual cache-version bump, and forgetting
-   means the phone silently keeps the old build. `vite-plugin-pwa` generates this from the
-   real output and removes the whole class of mistake.
+The safety net for all of it is `e2e/smoke.spec.ts`. Record before you split, never after.
 
-The migration is the one Coreward already went through and it is documented — see
-`PIPELINE.md` for the stack and Coreward's `CLAUDE.md` for the file layout that came out of
-it. Do it **before** the next substantial feature, not after: it gets more expensive with
-every line added, and the point of migrating is to protect work that has not happened yet.
+## Invariants
 
-Order that worked on Coreward: `git init` and push first, so everything after it is
-revertible. Then Vite and the generated service worker. Then split `app.js` into modules with
-golden tests recorded *before* the split, so the split is provably behaviour-preserving.
-
----
-
-## Things about this game specifically
-
-Fuller detail is in `NOTES.md`; these are the ones that bite.
-
-- **Toon shading is a four-step `gradientMap` with `NearestFilter` on both `minFilter` and
-  `magFilter`**, and **ambient light is what kills it**. Ambient 0.72, hemisphere 0.55,
-  directional 2.6. Turn ambient up and the bands wash into flat Lambert.
-- **Outlines are inverted hulls sized in world units**, derived per-object from its own
-  bounding box — not a fixed scale multiplier, which gives sub-pixel edges on small objects.
-- **Every character is instanced per body part**, not per character. A boss is the same rig at
-  3.3× with a different `instanceColor`.
+- **Nothing that affects game state may use `Math.random`.** Every spawn decision goes
+  through `hash(a, b)` seeded on (chunk, ascent). That determinism is what makes the
+  forty-second golden test possible, and it is the strongest tool this repo has.
+- **A signed shift in a hash silently halves its range.** It did here for the game's whole
+  life, deleting three mechanics with no error and no visible symptom. `NOTES.md` has the
+  full account. Test the random source, not just what it produces.
+- **`freeze()` before `advance()` in any harness.** Otherwise the run has been playing itself
+  for however long the machine took to boot, and every recorded number moves with the
+  machine — a faster build "breaks" the golden.
 - **Any `reset → push → flush` render path will eventually lose its flush and fail silently.**
   It already happened here: the enemy layers were never flushed, so every draugr was invisible
-  while still charging and still killing crew, and it read as a balance problem. **Assert
-  `mesh.count` against the entity list length.**
+  while still charging and still killing crew, and it read as a balance problem. Assert
+  `mesh.count` against the entity list length; `e2e` does.
 - **Use `requestAnimationFrame` to draw, never to undo.** A flash cleared from a rAF callback
   stuck at full opacity when the tab was hidden. `setTimeout` instead.
-- **There is a headless tick seam behind `?debug`** — `frame(now)` computes dt and calls rAF,
-  `tick(dt)` does the work. A whole run compresses into `__CR.advance(56)` plus a screenshot.
-  Every balance number in this game was set that way. Keep it.
 - **Seeding or clearing the save needs `Storage.prototype.setItem` frozen first**, or the
   outgoing page writes live state back over it on reload.
 
----
+## Numbers that are calibrated, not chosen
+
+- **Ambient light 0.72, hemisphere 0.55, directional 2.6.** Toon shading is a four-step
+  `gradientMap` with `NearestFilter` on both `minFilter` and `magFilter`; raise ambient and
+  the bands wash into flat Lambert.
+- **Outlines are inverted hulls sized in world units**, derived per-object from its own
+  bounding box — not a fixed scale multiplier, which gives sub-pixel edges on small objects.
+- **`bruteHP: 52`** — twice a grunt. 64 wins the first ascent, 70 loses it; the cliff is that
+  sharp because damage scales with warband size, so losing crew lengthens every later fight.
+- **Draw calls 42–55.** Every character is instanced per body part, not per character, so
+  crowd size does not move this. If it climbs, something stopped being instanced.
 
 ## Record as you go
 
