@@ -8,7 +8,7 @@ import { VERSION, CHANGELOG } from './changelog.js';
    rewrite only happens for TS importers. main.js is the last JS module left
    and each extraction shrinks it - when it goes, these become `.js` like the
    TS files' own imports. */
-import { clamp, smooth, hash, fmt, makeRng } from './util';
+import { clamp, lerp, smooth, hash, fmt, makeRng } from './util';
 import { T, WAXES, WORKSHOPS, MOULDS, WRAPS } from './tuning';
 import * as TU from './tuning';
 import * as CD from './candle';
@@ -134,6 +134,23 @@ const MOULD_GEO = MOULDS.map(mouldGeometry);
    ever non-empty, so this costs one draw call and switching press mid-run is
    free. */
 const BANDS = T.maxCandles * T.maxLayers;
+/* THE STANDING FORM.
+
+   `discH` is how tall one candle is once the batch is upright, and `standGap`
+   how far apart the discs sit ALONG THE PATH. The second number is the whole
+   trick: at the lying-down spacing of 0.62 a thirty-candle tower would lean
+   eighteen units back, which is a ramp. At 0.17 it is the reference's compact
+   column that still visibly leans and snakes when you turn - and still puts
+   different discs over different pools, which is what keeps weaving alive
+   after ROTATE. */
+const DISC_H = 0.26;
+/* How much fatter a candle is standing than lying. A disc drawn at its lying
+   radius makes a pole: the reference's tower is a stack of wide slices about a
+   third of the lane across, and reading the colour of a stripe from behind is
+   the entire point of standing up. */
+const STAND_FAT = 2.6;
+const STAND_GAP = 0.17;
+
 const C = {
   band: MOULD_GEO.map((g) => new Layer(g, 0xffffff, BANDS, 0.026)),
   /* The gold tip that pokes out of the left edge of the loaf. */
@@ -433,38 +450,74 @@ class Station {
       sign.position.set(side * 0.2, 3.05, 0);
       sign.renderOrder = 6;
 
-      // the pool itself, sunk into the runway
+      /* A VAT, not a decal. The reference's wax stands proud of the track with
+         a visible side wall and a thick marbled top - you can see the depth of
+         it from the side, and that is most of why its stations read as
+         machinery holding real liquid. A flat plane on the road surface reads
+         as paint, which is what this was. */
       const w = T.roadW / 2 - T.poolInset * 2;
-      const liquid = new THREE.Mesh(new THREE.PlaneGeometry(w, T.poolLen), new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, map: swirlTex(),
+      const tank = new THREE.Group();
+      const wall = new THREE.Mesh(box(w + 0.34, 0.40, T.poolLen + 0.34), toon(0xffffff));
+      wall.position.y = 0.18;
+      const liquid = new THREE.Mesh(box(w, 0.34, T.poolLen), new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.98, map: swirlTex(),
       }));
-      liquid.rotation.x = -Math.PI / 2;
-      liquid.position.y = 0.05;
+      liquid.position.y = 0.24;
+      /* The ring where the pour lands. It is the one thing that says the ladle
+         above is actually connected to the wax below. */
+      const splash = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.10, 6, 14),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
+      splash.rotation.x = -Math.PI / 2;
+      splash.position.set(0, 0.42, -T.poolLen / 2 + 1.4);
+      tank.add(wall, liquid, splash);
 
       /* The machine over it. A ladle that tips and pours, a glitter bottle
          that shakes, a ram that slams, a gift box, or ROTATE's arrow plate.
          The reference's single most "satisfying" quality is watching these
          work, so they all animate. */
       const headG = new THREE.Group();
-      const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 8), toon(0xffffff));
-      const pour = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 1.5, 8), new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.92,
+      /* A big chrome ladle on a stick, and a THICK stream out of it. The
+         reference's ladle is most of a lane wide and the pour is a rope of wax,
+         not a trickle - at 0.42 and 0.13 this read as a lollipop. */
+      /* Chrome, not wax-coloured: the reference's ladle is a pale metal sphere
+         and only the stream out of it is the colour of what it is pouring. A
+         bowl painted the same colour as the pool below it reads as a ball
+         resting on the track. */
+      const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 9), toon(0xeef3f8));
+      const pour = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.30, 3.0, 10), new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.95,
       }));
-      pour.position.y = -0.95;
+      pour.position.y = -1.85;
       const gift = new THREE.Mesh(box(1.5, 1.4, 1.5), toon(0xffd429));
       const giftBow = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.16, 6, 10), toon(0xff3d92));
       giftBow.position.y = 0.78; giftBow.rotation.x = Math.PI / 2;
       gift.add(giftBow);
+      /* THE DIE. One mesh per mould shape, and only the one being pressed is
+         shown - so the machine standing over the track is visibly the shape the
+         candles come out as. The reference's press is a fat fluted column with
+         a yellow flower on its face, and the flower is the cross-section you
+         get. A press that stamps an invisible shape is a multiplier with a
+         gantry over it, which is what this was. */
+      const dies = MOULD_GEO.map((geo) => {
+        const d = new THREE.Mesh(geo, toon(0xff3d92));
+        d.scale.set(2.4, 2.0, 2.4);
+        const face = new THREE.Mesh(geo, toon(0xffd429));
+        face.scale.set(0.62, 0.30, 0.62);
+        face.position.y = -0.72;
+        d.add(face);
+        d.visible = false;
+        return d;
+      });
       const plate = new THREE.Mesh(box(T.roadW / 2 - 0.3, 0.18, 2.6), toon(0xffffff));
       const arrowM = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.1, 4), toon(0xff3d92));
       arrowM.rotation.z = -Math.PI / 2; arrowM.position.y = 0.35;
       plate.add(arrowM);
-      headG.add(bowl, pour, gift, plate);
+      headG.add(bowl, pour, gift, plate, ...dies);
       headG.position.set(side * 0.1, 2.15, -T.poolLen / 2 + 1.4);
 
-      g.add(arm, post, sign, liquid, headG);
+      g.add(arm, post, sign, tank, headG);
       this.group.add(g);
-      return { g, arm, post, sign, liquid, headG, bowl, pour, gift, plate };
+      return { g, arm, post, sign, tank, wall, liquid, splash, headG, bowl, pour, gift, plate, dies };
     });
 
     this.group.visible = false;
@@ -481,28 +534,50 @@ class Station {
       p.sign.material.needsUpdate = true;
 
       const col = k.colour(h);
-      p.liquid.visible = k.machine !== 'arrow';
+      p.tank.visible = k.machine !== 'arrow';
       p.liquid.material.color.setHex(col);
-      p.liquid.material.opacity = k.liquid ? 0.95 : 0.32;
-
+      p.liquid.material.opacity = k.liquid ? 0.98 : 0.30;
+      /* Only a wax or scent station is a tank of liquid. Glitter, the press and
+         the gift box get a shallow mat instead, or the runway grows a bathtub
+         under a machine that never pours anything into it. */
+      p.wall.visible = k.liquid;
+      /* A DARKER shade of the same wax, so the rim of the tank reads against
+         the surface it holds. At the same colour the whole thing flattens into
+         a carpet, which is what a full-width flat plane already looked like. */
+      CTMP.setHex(col).multiplyScalar(0.62);
+      p.wall.material = toon(CTMP.getHex());
+      p.liquid.scale.y = k.liquid ? 1 : 0.12;
+      p.liquid.position.y = k.liquid ? 0.24 : 0.03;
       const beat = t * 2.2 + i * 0.7 + st.z * 0.11;
+      p.splash.visible = k.liquid;
+      p.splash.material.color.setHex(col);
+      const sp = 1 + Math.sin(beat * 4.1) * 0.18;
+      p.splash.scale.set(sp, sp, 1);
+
       p.bowl.visible = p.pour.visible = (k.machine === 'ladle' || k.machine === 'bottle');
       p.gift.visible = k.machine === 'gift';
+      if (k.machine !== 'ram') for (const d of p.dies) d.visible = false;
       p.plate.visible = k.machine === 'arrow';
       p.headG.visible = k.machine !== 'ram' || true;
 
       if (k.machine === 'ladle' || k.machine === 'bottle') {
-        p.bowl.material = toon(col);
+        p.bowl.material = toon(k.machine === 'bottle' ? col : 0xeef3f8);
         p.pour.material.color.setHex(col);
-        p.headG.position.y = 2.15 + Math.sin(beat) * 0.12;
-        p.headG.rotation.z = Math.sin(beat * 0.7) * 0.35;
-        p.pour.scale.y = 0.9 + Math.sin(beat * 3) * 0.14;
+        p.headG.position.y = 2.90 + Math.sin(beat) * 0.14;
+        /* Tipped further, so it reads as pouring rather than as hovering. */
+        p.headG.rotation.z = 0.30 + Math.sin(beat * 0.7) * 0.42;
+        p.pour.scale.y = 0.9 + Math.sin(beat * 3) * 0.16;
+        p.pour.scale.x = p.pour.scale.z = 1 + Math.sin(beat * 4.1) * 0.12;
       } else if (k.machine === 'ram') {
-        p.bowl.visible = true; p.pour.visible = false;
-        p.bowl.material = toon(0xff3d92);
-        const drop = Math.max(0, Math.sin(beat * 1.7));
-        p.headG.position.y = 2.5 - drop * 1.7;
+        p.bowl.visible = false; p.pour.visible = false;
+        for (let d = 0; d < p.dies.length; d++) p.dies[d].visible = (d === h.mould);
+        /* Slams to the deck and holds a beat at the bottom, rather than
+           bobbing: a press that never reaches the wax is a press that is not
+           pressing anything. */
+        const drop = Math.pow(Math.max(0, Math.sin(beat * 1.7)), 0.55);
+        p.headG.position.y = 3.0 - drop * 2.3;
         p.headG.rotation.z = 0;
+        p.headG.rotation.y = beat * 0.25;
       } else if (k.machine === 'gift') {
         p.headG.position.y = 1.5 + Math.sin(beat) * 0.18;
         p.headG.rotation.z = 0;
@@ -544,6 +619,9 @@ const run = {
   cash: 0, lost: 0, gained: 0, dips: 0, chunkSpawned: -1,
   workshop: 0, scale: 1, shake: 0, hitStop: 0,
   lastCloudWindow: -999, lastSkyWindow: -999, giftT: 0,
+  /* 0 lying flat, 1 stood up. Animated, because the moment the batch rears up
+     is the most dramatic thing in a run and snapping it wastes it. */
+  standing: false, standT: 0,
 };
 const count = () => run.tray.length;
 let lastResult = null;
@@ -576,6 +654,7 @@ function startLevel() {
   run.scale = TU.scaleFor(S.level);
   run.workshop = (S.level - 1) % WORKSHOPS.length;
   run.shake = 0; run.hitStop = 0; run.giftT = 0;
+  run.standing = false; run.standT = 0;
   run.lastCloudWindow = -999;
   run.lastSkyWindow = -999;
   stationSeq = 0;
@@ -1504,10 +1583,17 @@ function updatePools(n) {
         ((h === st.left && run.x < 0) || (h === st.right && run.x >= 0));
       if (!onIt) continue;
       h.done = true;
-      TR.rotate(run.tray);
-      popAt('ROTATE', '#ffffff', st.z);
-      emit(run.x, 0.8, st.z, 22, 0xffffff, 2.2, 5);
-      sfx.press(); shake(0.4); flash(0.16);
+      /* IT STANDS THE BATCH UP. That is what the name means and what the
+         reference does with it - flat slab at 15.5s in the walkthrough, tower
+         at 15.8s, with the plate still behind it. It used to turn the tray end
+         for end here, which is a thing the player cannot see happening and the
+         single biggest reason the stations read as power-ups rather than as
+         machinery. */
+      run.standing = !run.standing;
+      if (!run.standing) TR.rotate(run.tray);
+      popAt(run.standing ? 'STAND UP' : 'LAY DOWN', '#ffffff', st.z);
+      emit(run.x, 0.8, st.z, 26, 0xffffff, 2.4, 6);
+      sfx.press(); shake(0.5); flash(0.2);
     }
 
     for (let k = 0; k < n; k++) {
@@ -1721,7 +1807,12 @@ function writeStack() {
   C.wick.reset(); C.ribbon.reset(); C.bow.reset(); C.spark.reset();
   let fN = 0;
 
-  const n = ST.layout(run.trail, count(), stackPos);
+  /* Lying down the candles trail at `trailGap`; standing they pack to
+     `STAND_GAP` and climb. `standT` blends between the two, so the batch rears
+     up rather than teleporting. */
+  const t = run.standT;
+  const gap = lerp(T.trailGap, STAND_GAP, t);
+  const n = ST.layout(run.trail, count(), stackPos, gap);
   const lit = run.gift;
 
   for (let i = 0; i < n; i++) {
@@ -1732,59 +1823,105 @@ function writeStack() {
     const rad = CD.radii(r), xs = CD.bandYs(r);
     const bh = CD.bandHeight(r), len = CD.candleHeight(r);
     const wrapped = r.wrap > 0;
-
-    /* Lying down: the band cylinders run along X. A gentle bob keeps a long
-       loaf from reading as one rigid object; keyed on index and time, never
-       random, so it does not jitter. */
     const bob = Math.sin(run.time * 5 - i * 0.4) * 0.03;
-    QT.setFromAxisAngle(V.set(0, 0, 1), Math.PI / 2);
 
-    if (wrapped) {
-      /* After WRAP the candle is a wrapped present, which is exactly what the
-         reference's loaf turns into at its gift station. */
-      const w = WRAPS[r.wrap];
-      const bw = len * 0.92, bh2 = rad[0] * 2.1;
-      M2.compose(V2.set(p.x, bh2 * 0.5 + bob, p.z), QT.identity(), V.set(bw, bh2, T.trailGap * 0.94));
-      C.ribbon.push(M2, CTMP.setHex(w.col));
-      M2.compose(V2.set(p.x, bh2 + 0.06 + bob, p.z), QT.identity(), V.set(bw * 0.18, 0.16, T.trailGap * 1.02));
-      C.bow.push(M2, CTMP.setHex(w.bow));
-    } else {
-      for (let b = 0; b < r.layers.length; b++) {
-        const off = xs[b] - len / 2;
-        M2.compose(V2.set(p.x + off, rad[b] + bob, p.z), QT, V.set(rad[b] * 2, bh, rad[b] * 2));
-        CTMP.setHex(WAXES[r.layers[b]].col);
-        if (r.glitter > 0) CTMP.lerp(WHITE, 0.10 * r.glitter);
-        if (r.scent > 0) CTMP.lerp(SCENTC, 0.16);
-        band.push(M2, CTMP);
+    /* THE STANDING FORM: one disc per candle, stacked in height, still at its
+       own place on the recorded path. One disc rather than one per wax layer,
+       because that is what the reference's tower is - a stripe per candle - and
+       it is what makes weaving legible from the side: a batch that took two
+       pools comes out banded, a batch that took one comes out plain. */
+    const rr = CD.candleRadius(r);
+    const standY = DISC_H * (i + 0.5);
+    const m = MOULDS[r.mould];
+
+    if (t > 0.02) {
+      /* Twisted a little further with every disc, so a TWIST or STAR mould
+         reads as a spiral up the tower rather than as a stack of identical
+         lumps. This is the mould being visible, which is the whole point of
+         standing up. */
+      QT.setFromAxisAngle(V.set(0, 1, 0), i * (0.12 + m.twist * 0.35));
+      const h = DISC_H * 0.94 * (1 + m.bulge * 0.3);
+      const wide = rr * 2 * lerp(1, STAND_FAT, t);
+      M2.compose(V2.set(p.x, standY * t + (rad[0] + bob) * (1 - t), p.z), QT,
+        V.set(wide, h * t + bh * (1 - t), wide));
+      CTMP.setHex(WAXES[CD.topWax(r)].col);
+      if (r.glitter > 0) CTMP.lerp(WHITE, 0.10 * r.glitter);
+      if (r.scent > 0) CTMP.lerp(SCENTC, 0.16);
+      band.push(M2, CTMP);
+
+      /* Wrapped: a ribbon round the disc and a bow on it, per candle, which is
+         what the reference ties at its WRAP station. */
+      if (wrapped) {
+        const w = WRAPS[r.wrap];
+        M2.compose(V2.set(p.x, standY * t, p.z), QT.identity(),
+          V.set(rr * STAND_FAT * 2.16, DISC_H * 0.30, rr * STAND_FAT * 2.16));
+        C.ribbon.push(M2, CTMP.setHex(w.col));
+        if (i === 0 || i === n - 1) {
+          M2.compose(V2.set(p.x, standY * t + DISC_H * 0.3, p.z), QT.identity(),
+            V.set(rr * STAND_FAT * 1.5, DISC_H * 0.75, rr * STAND_FAT * 0.5));
+          C.bow.push(M2, CTMP.setHex(w.bow));
+        }
       }
-      /* The gold tip, poking out of the left edge of the loaf AS THE PLAYER
-         SEES IT. World +x is screen left here - the camera looks along +z, so
-         it is turned 180 degrees about Y - which is why this is a plus. */
-      QT2.setFromAxisAngle(V.set(0, 0, 1), -Math.PI / 2);
-      M2.compose(V2.set(p.x + len / 2 + T.wickH * 0.5, rad[0] + bob, p.z), QT2,
-        V.set(rad[0] * 1.5, T.wickH, rad[0] * 1.5));
-      C.wick.push(M2);
-    }
 
-    /* Glitter reads as specks sitting on the top of the loaf, not only as a
-       lightened colour - the reference's sparkle is visibly ON the wax. */
-    if (r.glitter > 0 && (i % 2 === 0)) {
-      const sx = p.x + ((i * 37) % 13 - 6) * 0.13;
-      M2.compose(V2.set(sx, rad[0] * 2 + 0.05 + bob, p.z), QT.identity(),
-        V.set(0.09, 0.09, 0.09));
-      C.spark.push(M2, CTMP.setHex(0xffffff));
+      /* The wick is on TOP of the tower, and only there. */
+      if (i === n - 1) {
+        M2.compose(V2.set(p.x, standY * t + DISC_H * 0.9, p.z), QT2.identity(),
+          V.set(rr * STAND_FAT * 0.9, T.wickH * 2.0, rr * STAND_FAT * 0.9));
+        C.wick.push(M2);
+      }
+      if (r.glitter > 0 && i % 2 === 0) {
+        M2.compose(V2.set(p.x + rr * STAND_FAT * 1.05, standY * t, p.z), QT.identity(),
+          V.set(0.10, 0.10, 0.10));
+        C.spark.push(M2, CTMP.setHex(0xffffff));
+      }
+    } else {
+      QT.setFromAxisAngle(V.set(0, 0, 1), Math.PI / 2);
+      if (wrapped) {
+        const w = WRAPS[r.wrap];
+        const bw = len * 0.92, bh2 = rad[0] * 2.1;
+        M2.compose(V2.set(p.x, bh2 * 0.5 + bob, p.z), QT.identity(), V.set(bw, bh2, T.trailGap * 0.94));
+        C.ribbon.push(M2, CTMP.setHex(w.col));
+        M2.compose(V2.set(p.x, bh2 + 0.06 + bob, p.z), QT.identity(), V.set(bw * 0.18, 0.16, T.trailGap * 1.02));
+        C.bow.push(M2, CTMP.setHex(w.bow));
+      } else {
+        for (let b = 0; b < r.layers.length; b++) {
+          const off = xs[b] - len / 2;
+          M2.compose(V2.set(p.x + off, rad[b] + bob, p.z), QT, V.set(rad[b] * 2, bh, rad[b] * 2));
+          CTMP.setHex(WAXES[r.layers[b]].col);
+          if (r.glitter > 0) CTMP.lerp(WHITE, 0.10 * r.glitter);
+          if (r.scent > 0) CTMP.lerp(SCENTC, 0.16);
+          band.push(M2, CTMP);
+        }
+        /* The gold tip, poking out of the left edge of the loaf AS THE PLAYER
+           SEES IT. World +x is screen left here - the camera looks along +z, so
+           it is turned 180 degrees about Y - which is why this is a plus. */
+        QT2.setFromAxisAngle(V.set(0, 0, 1), -Math.PI / 2);
+        M2.compose(V2.set(p.x + len / 2 + T.wickH * 0.5, rad[0] + bob, p.z), QT2,
+          V.set(rad[0] * 1.5, T.wickH, rad[0] * 1.5));
+        C.wick.push(M2);
+      }
+      if (r.glitter > 0 && (i % 2 === 0)) {
+        const sx = p.x + ((i * 37) % 13 - 6) * 0.13;
+        M2.compose(V2.set(sx, rad[0] * 2 + 0.05 + bob, p.z), QT.identity(),
+          V.set(0.09, 0.09, 0.09));
+        C.spark.push(M2, CTMP.setHex(0xffffff));
+      }
     }
 
     QT2.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
-    M2.compose(V2.set(p.x, 0.03, p.z), QT2, V.set(len * 1.05, T.trailGap * 1.6, 1));
+    M2.compose(V2.set(p.x, 0.03, p.z), QT2,
+      V.set(lerp(len * 1.05, rr * STAND_FAT * 2.2, t), lerp(T.trailGap * 1.6, STAND_GAP * 2.2, t), 1));
     W.shadow.push(M2);
 
     if (lit && i < Math.floor(run.giftT * 11)) {
       const fs = 0.3 + Math.sin(run.time * 19 + i) * 0.03;
-      const ty = (wrapped ? rad[0] * 2.1 : rad[0] * 2) + 0.2;
-      M2.compose(V2.set(p.x + len / 2 - 0.2, ty + fs, p.z), QT2.identity(), V.set(fs, fs * 2.0, fs));
+      const ty = t > 0.5
+        ? standY * t + DISC_H * 0.8
+        : (wrapped ? rad[0] * 2.1 : rad[0] * 2) + 0.2;
+      const fx = t > 0.5 ? p.x : p.x + len / 2 - 0.2;
+      M2.compose(V2.set(fx, ty + fs, p.z), QT2.identity(), V.set(fs, fs * 2.0, fs));
       flames.setMatrixAt(fN, M2);
-      M2.compose(V2.set(p.x + len / 2 - 0.2, ty + fs * 0.8, p.z), QT2.identity(),
+      M2.compose(V2.set(fx, ty + fs * 0.8, p.z), QT2.identity(),
         V.set(fs * 0.55, fs * 1.1, fs * 0.55));
       flameCores.setMatrixAt(fN, M2);
       fN++;
@@ -2035,6 +2172,9 @@ function tick(dt, draw = true) {
     step(dt);
   }
   if (run.gift) { run.giftT += dt; run.time += dt; }
+  /* Eased over about half a second. Nothing else reads `standT`, so a harness
+     that never draws still gets identical simulation. */
+  run.standT = clamp(run.standT + (run.standing ? dt * 2.2 : -dt * 3), 0, 1);
   updateGlitter(dt);
 
   /* At the table the camera swings around in front of the stack, so the player
@@ -2074,7 +2214,13 @@ function tick(dt, draw = true) {
        from the side. A high camera sees the tops, the newest band covers the
        lens, and a three-colour tray reads as one colour - which is exactly
        what the first pass did. */
-    camPos.set(run.x * 0.55, 4.6 + tail * 0.20, run.z - 12.8 - tail * 0.60);
+    /* A standing batch is as tall as it is long, so the camera lifts and pulls
+       back with `standT` as well as with the tail. Without this the tower's top
+       leaves the frame the moment ROTATE fires, which is exactly the moment the
+       player wants to look at it. */
+    const up = run.standT * clamp(count() * DISC_H, 0, 9);
+    camPos.set(run.x * 0.55, 4.6 + tail * 0.20 + up * 0.55,
+      run.z - 12.8 - tail * 0.60 - up * 0.75);
   }
   camera.position.lerp(camPos, smooth(done ? 2.2 : 9, dt));
   if (run.shake > 0) {

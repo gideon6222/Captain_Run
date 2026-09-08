@@ -56,6 +56,27 @@ in reach"*. It is not a crowd and it is not a single candle.
 slab is pink and the front half is blue with glitter on it — because those parts of the slab
 were in different places when they crossed the stations. That is the whole game.
 
+## The player object has TWO FORMS, and a station changes it
+
+This is the thing four rebuilds missed, and it is the reason the stations felt like power-ups
+here and like machinery there.
+
+1. **Lying down.** A long slab of candles along the track, gold wicks poking out one edge.
+   This is how a level starts.
+2. **Standing up.** A **tall vertical tower of discs**, one per wax layer, striped by colour,
+   with the gold wick on top and a bow round the bottom once wrapped.
+
+**`ROTATE` is what turns it from one into the other**, and the name means what it says: it
+stands the batch upright. Watch `youtube.com/watch?v=jXw01JHvA2s` between **15.5s and 15.8s**
+— flat slab, ROTATE plate, tower — and the plate is still visible behind the tower at 16.1s.
+That is the single most dramatic moment in a run and it is a *station doing something to the
+object*, not a multiplier.
+
+The tower keeps snaking: at 104s and 201s it visibly leans and its discs are offset from one
+another, and a tower that crosses a pool comes out **striped** (87.5s white → 89s orange on
+some discs only). So the discs keep their trail positions; they are simply stacked in height
+as well. Weaving still decides which disc gets which colour.
+
 ## Stations
 
 All signed with a **hot-pink pill label** hanging from a thin dark **curved lamp-post arm**
@@ -63,11 +84,11 @@ at the edge of the track, pointing inward.
 
 | Sign | What it is |
 |---|---|
-| **CANDLE** | A **pool of coloured wax lying in the track**, roughly half the width, with a swirled liquid surface. A **ladle on the curved arm tips and pours into it.** Two often appear side by side in different colours — the guide says to swipe left and right to get all your candles into both. |
-| **GLITTER** | A tilted **bottle** on an arm sprinkling multicoloured glitter over the track. Adds sparkle to whatever passes under it. |
-| **ROTATE** | A white platform with a big curved white arrow. **Turns the slab.** |
-| **MOLD** | A pink column press with a **yellow star** on it, stamping a shape. |
-| **WRAP** | A giant **gift box with a bow** at the track edge. Turns the segments into **wrapped gift boxes with pink bows**, stacked. |
+| **CANDLE** | A **RAISED TANK of wax sunk into the track**, roughly half the width, standing proud of the surface with a visible side wall and a swirled, marbled liquid top — not a decal. A big chrome **ladle**, a sphere on a stick, hangs low over it and tips to pour a thick stream in. Two often appear side by side in different colours — the guide says to swipe left and right to get all your candles into both. |
+| **GLITTER** | A tilted **bottle** on an arm sprinkling multicoloured glitter over the track. The sparkle **sticks to the candles** and is still on them at the podium. |
+| **ROTATE** | A white platform with a big curved white arrow. **It stands the batch upright** — see above. |
+| **MOLD** | A fat **pink fluted column** with a big **yellow flower or star** on its face — that is the *die*, and the shape on it is the shape you get — under a pale pink **ram** that comes down. The standing discs come out with that **cross-section**: scalloped, star, flower. At 19s the press fills the screen and four freshly stamped fluted candles stand beside it. |
+| **WRAP** | A giant **gift box with a bow** at the track edge. Puts a **ribbon and a bow** round the batch — at 110s a red bow is tied round the base of the tower. |
 
 ## Obstacles
 
@@ -185,7 +206,8 @@ Closed in v4.0.0 — every item on the previous list:
 1. ~~We draw upright separate candles; it draws one long segmented slab lying down.~~ The
    player object is now one loaf lying along the track, one candle per row, each candle
    spanning the lane, gold tips down one edge.
-2. ~~No ROTATE station.~~ A white plate with a curved arrow; turns the loaf end for end.
+2. ~~No ROTATE station.~~ A white plate with a curved arrow — though what it *does* was
+   wrong until v6: it stands the batch upright, it does not turn it end for end.
 3. ~~Progression is stat upgrades; theirs is buying shops.~~ The workshop sells the Online
    Shop, the Boutique, the Luxury Shop and the Scent Shop, at the two observed prices where
    we have them. **The Scent Shop adds a station**, which is the shape of theirs.

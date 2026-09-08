@@ -8,9 +8,20 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '5.0.0';
+export const VERSION = '6.0.0';
 
 export const CHANGELOG = [
+  {
+    version: '6.0.0', date: '2026-09-08', title: 'It stands up',
+    notes: [
+      'ROTATE now does what its name says: the whole batch rears up off the track into a tall tower of candles. It is the biggest thing that happens in a run.',
+      'Standing up, every candle is a stripe in the tower, so a batch that wove through two pools comes out banded and one that held a line comes out plain.',
+      'The press shows the shape it stamps \u2014 a fat die in the actual cross-section, flower, star or fluted \u2014 and slams to the deck instead of bobbing.',
+      'Wax is a real vat now: a tank standing proud of the track with a darker rim, a chrome ladle hanging over it, a thick stream and a ring where the pour lands.',
+      'Wrapping ties a ribbon round every candle and a bow at each end of the tower.',
+      'The tower carries its glitter and its scent all the way to the gift table.'
+    ]
+  },
   {
     version: '5.0.0', date: '2026-09-08', title: 'The screens, from the video',
     notes: [

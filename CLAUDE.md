@@ -69,6 +69,32 @@ npm run size       # bundle size guard, fails in both directions
 | `REFERENCE.md` | **What the real game actually does**, observed from its screenshots and a gameplay video |
 | `NOTES.md` | Design decisions, tuning as shipped, and what to do next |
 
+## The player object has TWO FORMS, and ROTATE changes it
+
+Lying down it is a slab of candles along the track. **ROTATE stands it up** into a tall
+tower of discs, one per candle, and that is the most dramatic thing in a run. `REFERENCE.md`
+has the frames: flat at 15.5s in the walkthrough, tower at 15.8s, with the plate still behind
+it. It used to turn the tray end for end, which the player cannot see happening — and that is
+why the stations read as power-ups rather than as machinery.
+
+- **`run.standing` and `run.standT`.** The second is the eased 0→1 blend; nothing but the
+  renderer and the camera read it, so a harness that never draws still gets an identical
+  simulation.
+- **The tower keeps the trail.** `ST.layout` takes a `gap`, and standing packs to
+  `STAND_GAP` (0.17) instead of `trailGap` (0.62). At the lying spacing a thirty-candle tower
+  leans eighteen units back — a ramp, not a tower. Packing tighter keeps the reference's
+  compact leaning column *and* keeps different discs over different pools, which is the whole
+  weaving mechanic.
+- **One disc per candle, not per layer.** That is what the reference's tower is — a stripe
+  per candle — and it is what makes weaving legible from behind.
+- **`STAND_FAT`.** A disc drawn at its lying radius makes a pole. The tower is a stack of
+  wide slices about a third of the lane across.
+- **The press has a real die**, one mesh per mould shape, and shows only the one being
+  pressed — so the machine over the track *is* the shape you get.
+- **The vat is a tank**, not a decal: a box standing proud of the road with a rim in a darker
+  shade of its own wax, under a chrome ladle and a thick pour, with a ring where it lands. A
+  flat plane on the road surface reads as paint.
+
 ## The screens are the reference's, not ours
 
 Five builds got the runway closer and closer and left the *screens* alone, and the screens
@@ -242,11 +268,13 @@ weaving is worth **9.4× per candle** over never steering.
 - **Candles are ~4:1 tall and the camera is low.** The bands are horizontal, so they are only
   legible from the side; a high camera sees the tops and a three-colour tray reads as one
   colour.
-- **Draw calls 26–85**, measured across a whole level with every upgrade at 3 (which is the
-  worst case: every station kind active). Everything on the runway is instanced; the
+- **Draw calls 28–92**, measured across a whole level with every upgrade at 3 (which is the
+  worst case: every station kind active), peaking with the batch standing. Everything on the runway is instanced; the
   *stations* are the cost, at three pooled gantries of about twelve visible meshes each, and
   the three shop fronts past the finish line add twelve more when they come into frustum.
-  The e2e budget is 90. Shop fronts started at seven meshes apiece and pushed the peak to 87
+  The e2e budget is 100, which is the mobile guideline this stack works to, so the headroom
+  is thin: the next optimisation is instancing the station furniture — arm, post, sign and
+  tank are four plain meshes per half, twenty-four across three stations. Shop fronts started at seven meshes apiece and pushed the peak to 87
   — a crossed pair of bars for a `+` and an outline hull are invisible at that distance and
   cost the same as the panel.
 

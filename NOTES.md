@@ -237,6 +237,26 @@ Removed outright: the candle counter, the running value readout, the colour-chip
 progress bar, the star rating, the itemised results card, the between-level workshop sheet,
 and five invented stat upgrades. About 3.8 KB of CSS went with them.
 
+## The stations pass (v6.0.0)
+
+Gideon: *"the additional things like wrapping, molds, and glitter just feel like power ups...
+In the original game, some of them actually turn the candle right side up and physically stamp
+the candles into different shapes."*
+
+He was describing something real that four rebuilds had missed. **The reference's player
+object has two forms**, and `ROTATE` is the station that switches between them — flat slab to
+standing tower. Ours turned the tray end for end, which is invisible.
+
+Found by stepping the walkthrough video at 0.3s intervals: flat at 15.5s, tower at 15.8s,
+ROTATE plate still visible behind it at 16.1s. The tower keeps snaking (its discs are visibly
+offset at 104s and 201s) and comes out striped after a pool (white at 87.5s, orange-banded at
+89s), so the trail survives standing — which is what let this be implemented without losing
+the weaving mechanic.
+
+Also this pass: the press shows a die in the shape it stamps and slams to the deck; the vats
+became tanks standing proud of the road with a darker rim, a chrome ladle, a thick pour and a
+splash ring; wrapping ties a ribbon round every candle.
+
 ## Known gaps / next
 
 1. **The upgrade list is still ours, not the reference's.** He asked for "same traps and

@@ -97,19 +97,28 @@ export function sampleBack(t: Trail, back: number, out: { x: number; z: number }
    Keyed on the ROW, not the candle: three candles abreast are all the same
    distance back. */
 export const rowOf = (i: number): number => Math.floor(i / T.rowWidth);
-export const backFor = (i: number): number => rowOf(i) * T.trailGap;
+/* How far back candle `i` sits along the recorded path.
+
+   `gap` exists for the STANDING form. Once ROTATE stands the batch upright the
+   candles stack in height as well as trailing, and at the lying-down spacing a
+   thirty-candle tower would be eighteen units long and seven high - a ramp, not
+   a tower. Packing them tighter keeps the reference's compact leaning column
+   while leaving the trail, and therefore the whole weaving mechanic, intact. */
+export const backFor = (i: number, gap = T.trailGap): number => rowOf(i) * gap;
 
 /* Fill `out` with a position per candle, front row first.
 
    The row follows the leader's recorded path and the candle is offset sideways
    within it, which is what keeps a wide tray lagging exactly like a narrow one
    while still showing the player more than one candle's worth of colour. */
-export function layout(t: Trail, count: number, out: { x: number; z: number }[]): number {
+export function layout(
+  t: Trail, count: number, out: { x: number; z: number }[], gap = T.trailGap,
+): number {
   const n = Math.min(count, T.maxCandles);
   while (out.length < n) out.push({ x: 0, z: 0 });
   const mid = (T.rowWidth - 1) / 2;
   for (let i = 0; i < n; i++) {
-    sampleBack(t, backFor(i), out[i]);
+    sampleBack(t, backFor(i, gap), out[i]);
     out[i].x += ((i % T.rowWidth) - mid) * T.rowGap;
   }
   return n;
