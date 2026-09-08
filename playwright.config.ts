@@ -8,7 +8,8 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   workers: 1,
-  reporter: [['list']],
+  /* list for the terminal, html for the artifact CI uploads on failure */
+  reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://localhost:4173',
     /* portrait phone, which is the only shape this game is played in */

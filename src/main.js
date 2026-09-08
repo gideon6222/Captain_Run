@@ -13,6 +13,7 @@ import { T, TIERS, PALETTES } from './tuning';
 import * as TU from './tuning';
 import { load, save as writeSave } from './save';
 import { createSfx } from './sfx';
+import { attach, toon, box, Layer, OUTLINE_MAT } from './gfx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SAVE + DERIVED STATS
@@ -59,84 +60,14 @@ const sun = new THREE.DirectionalLight(0xffffff, 2.6);
 sun.position.set(-6, 12, -4);
 scene.add(sun);
 scene.add(sun.target);
-
-// toon gradient map — four hard bands, the whole art style in six lines
-function gradientMap(steps) {
-  const data = new Uint8Array(steps.length * 4);
-  for (let i = 0; i < steps.length; i++) {
-    const v = Math.round(steps[i] * 255);
-    data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255;
-  }
-  const tex = new THREE.DataTexture(data, steps.length, 1, THREE.RGBAFormat);
-  tex.minFilter = THREE.NearestFilter;
-  tex.magFilter = THREE.NearestFilter;
-  tex.generateMipmaps = false;
-  tex.needsUpdate = true;
-  return tex;
-}
-const GRAD = gradientMap([0.36, 0.62, 0.84, 1.0]);
-
-const matCache = new Map();
-function toon(color, opts) {
-  const key = color + '|' + (opts ? JSON.stringify(opts) : '');
-  let m = matCache.get(key);
-  if (!m) {
-    m = new THREE.MeshToonMaterial(Object.assign({ color, gradientMap: GRAD }, opts || {}));
-    matCache.set(key, m);
-  }
-  return m;
-}
-const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x140a06, side: THREE.BackSide });
+// Toon materials, outline hulls and the instanced Layer live in gfx.ts.
+// attach() hands it the scene; every Layer built below adds itself to that one.
+attach(scene);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PART LAYERS — one InstancedMesh per body part, rewritten every frame.
 // This is what lets 26 vikings, 18 draugr and 260 loot chunks cost ~50 draw calls.
 // ─────────────────────────────────────────────────────────────────────────────
-class Layer {
-  // `outline` is a thickness in world units, not a scale factor: the hull is scaled
-  // per axis from the geometry's own size so the black edge is the same width
-  // everywhere, and scaling (rather than pushing along normals) leaves no corner gaps.
-  constructor(geo, color, max, outline) {
-    this.max = max;
-    this.mesh = new THREE.InstancedMesh(geo, toon(color), max);
-    this.mesh.frustumCulled = false;
-    this.mesh.count = 0;
-    scene.add(this.mesh);
-    this.out = null;
-    if (outline) {
-      this.out = new THREE.InstancedMesh(geo, OUTLINE_MAT, max);
-      this.out.frustumCulled = false;
-      this.out.count = 0;
-      this.out.renderOrder = -1;
-      scene.add(this.out);
-      this.tmp = new THREE.Matrix4();
-      geo.computeBoundingBox();
-      const bb = geo.boundingBox;
-      const sx = Math.max(0.02, bb.max.x - bb.min.x);
-      const sy = Math.max(0.02, bb.max.y - bb.min.y);
-      const sz = Math.max(0.02, bb.max.z - bb.min.z);
-      this.sv = new THREE.Vector3(1 + 2 * outline / sx, 1 + 2 * outline / sy, 1 + 2 * outline / sz);
-    }
-    this.n = 0;
-    this.tinted = false;
-  }
-  reset() { this.n = 0; }
-  push(m, color) {
-    if (this.n >= this.max) return;
-    this.mesh.setMatrixAt(this.n, m);
-    if (color !== undefined) { this.mesh.setColorAt(this.n, color); this.tinted = true; }
-    if (this.out) { this.tmp.copy(m).scale(this.sv); this.out.setMatrixAt(this.n, this.tmp); }
-    this.n++;
-  }
-  flush() {
-    this.mesh.count = this.n;
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.tinted && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    if (this.out) { this.out.count = this.n; this.out.instanceMatrix.needsUpdate = true; }
-  }
-}
-
-const box = (x, y, z) => new THREE.BoxGeometry(x, y, z);
 const M = new THREE.Matrix4(), M2 = new THREE.Matrix4(), M3 = new THREE.Matrix4();
 const MA = new THREE.Matrix4(), MB = new THREE.Matrix4();
 const Q = new THREE.Quaternion(), V = new THREE.Vector3(), V2 = new THREE.Vector3();

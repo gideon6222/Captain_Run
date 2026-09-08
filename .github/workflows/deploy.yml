@@ -80,15 +80,37 @@ jobs:
       # whole simulation after forty seconds and asserts it exactly - the game
       # is deterministic given a fresh save, so that is a golden test for the
       # entire game, and it is what makes splitting main.js safe to attempt.
+      #
+      # Output is teed to a file and, on failure, written into the job summary.
+      # Actions logs and artifacts both need an authenticated download, so a
+      # red run is otherwise a dead end for anyone looking at it from outside -
+      # including from a Claude Code session, which is where these get read.
+      # The job summary renders on the public run page.
       - name: Smoke test
-        run: npm run e2e
+        run: |
+          set -o pipefail
+          npm run e2e 2>&1 | tee e2e-output.txt
+
+      - name: Put the failure in the job summary
+        if: failure()
+        run: |
+          {
+            echo '### Smoke test failure'
+            echo
+            echo '```'
+            tail -c 60000 e2e-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            e2e-output.txt
+          if-no-files-found: ignore
           retention-days: 7
 
   build:
