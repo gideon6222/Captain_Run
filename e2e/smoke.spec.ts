@@ -172,10 +172,13 @@ test('weaving the pools beats holding a line, end to end', async ({ page }) => {
 
    These are LEVEL ONE's ratings, which are not the ones par was calibrated
    against - par comes from the mean over six levels, because one level swings a
-   policy by 25% on layout luck. Level 1 is a good draw for dodging, which is
-   why it rates as well as gathering here and does not on average. If this
-   fails, re-measure over six levels and re-write the table beside `par` - do
-   not widen the test. */
+   policy enormously on layout luck.
+
+   Idle and dodge both rate zero, and that is measured rather than sloppy: with
+   a batch that starts at ONE candle there is almost nothing to protect, so a
+   bot that only avoids hazards scores what a bot that does nothing scores. The
+   early game is about collecting. If this fails, re-measure over six levels and
+   re-write the table beside `par` - do not widen the test. */
 test('par still separates the ways of playing a level', async ({ page }) => {
   await bootFresh(page);
   const got: Record<string, number> = {};
@@ -184,7 +187,7 @@ test('par still separates the ways of playing a level', async ({ page }) => {
     got[mode] = (await playLevel(page, mode)).result.stars;
   }
   expect(got, `stars by policy: ${JSON.stringify(got)}`)
-    .toEqual({ idle: 0, dodge: 2, gather: 2, weave: 3 });
+    .toEqual({ idle: 0, dodge: 0, gather: 1, weave: 2 });
 });
 
 test('a pool treats the candles standing in it, not the whole tray', async ({ page }) => {
@@ -875,8 +878,8 @@ test('the simulation is unchanged after thirty seconds', async ({ page }) => {
 
   expect(sim).toEqual({
     z: 343.1600000000093,
-    count: 30,
-    avgColours: 2.8,
+    count: 5,
+    avgColours: 2,
     /* Zero glitter and zero wrapped is CORRECT for this run, not a dropped
        station. Pools are half-width and a run that never steers sits exactly
        on the seam, where `p.x < 0 ? left : right` puts every candle in the
@@ -884,18 +887,18 @@ test('the simulation is unchanged after thirty seconds', async ({ page }) => {
        runway. `every station kind actually fires during a real level` is the
        test that covers the other half. */
     avgGlitter: 0,
-    pressed: 21,
-    wrapped: 0,
-    plain: 0,
-    worth: 3951,
+    pressed: 2,
+    wrapped: 4,
+    plain: 1,
+    worth: 536,
     cash: 1560,
-    lost: 6,
-    gained: 28,
-    dips: 87,
-    stations: 3,
+    lost: 3,
+    gained: 7,
+    dips: 14,
+    stations: 2,
     obstacles: 9,
     notes: 1,
-    loose: 14,
+    loose: 2,
     over: false,
     coins: 0,
     level: 1,

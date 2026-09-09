@@ -29,7 +29,12 @@ export const T = {
      loaf reads its colours off the top faces receding from the camera, which
      is how the reference solves the readability problem that three-abreast
      upright candles were solving before. */
-  startCandles: 8,
+  /* ONE. A batch is something you build over a run and over a campaign, not
+     something you are handed. Starting at eight made the first thirty seconds
+     free: nothing you picked up mattered, and losing three to a barrier was an
+     inconvenience rather than a disaster. At one, the first loose candle on the
+     runway is the most valuable thing you have ever seen. */
+  startCandles: 1,
   maxCandles: 30,
   rowWidth: 1,
   rowGap: 0,
@@ -62,6 +67,13 @@ export const T = {
      half the width so one line misses the other. */
   poolLen: 11.0,
   poolInset: 0.15,
+
+  /* How plentiful loose candles are, and it RISES WITH THE LEVEL. Thirty
+     candles has to be somewhere you get to, not somewhere you start: level one
+     puts about a dozen on the whole runway, level six about thirty. */
+  looseBase: 0.30,
+  loosePerLevel: 0.07,
+  looseMax: 0.85,
 
   looseWorth: 1,
   magnetBase: 2.0,
@@ -102,24 +114,31 @@ export const T = {
      than one. Values normalised by `priceFor(level)` so they are comparable,
      no upgrades:
 
-       policy   L1     L2     L3     L4     L5     L6     mean
-       idle    5,401  2,999  7,487  6,660  2,530  1,612   4,448   0 stars
-       dodge  18,158  4,256 15,903  7,563  1,350 11,260   9,748   1 star
-       gather 14,168 13,192 21,464 22,600 12,654 16,402  16,747   2 stars
-       weave  31,247 15,871 42,426 40,687 16,413 31,911  29,759   3 stars
+       policy   L1     L2     L3     L4     L5     L6    mean
+       idle    1,982  1,164  1,491  3,173  1,535  1,710  1,843   0 stars
+       dodge   1,439  1,341  2,118  2,450    583  3,325  1,876   0 stars
+       gather  2,423  1,114  3,520  4,588  1,400  3,705  2,792   1 star
+       weave   5,850  1,234  4,574 23,844  3,777 10,441  8,287   3 stars
 
-     Weaving is worth 6.7x idling, and the *mean* is the number to calibrate on:
-     one level swings a policy by 25% on layout luck alone, and dodge is worse
-     than idling on level 5. An earlier par set from level 1 by itself put the
-     weaving bot on 3 stars and every other level on 2.
+     Weaving is worth 4.5x idling, and the *mean* is the number to calibrate on:
+     one level swings a policy enormously on layout luck alone.
+
+     DODGING ALONE IS NOW WORTH NOTHING, and that is a real consequence of
+     starting with one candle rather than eight. There is almost nothing to
+     protect: a bot that only avoids hazards ends a level with three candles,
+     the same as one that does nothing, because the candles it saved are ones it
+     never picked up. Early on the game is about *collecting*; obstacles start
+     to matter once there is a batch worth losing. Left as measured rather than
+     massaged - it is what the design asks for.
 
      Measure with THAT bot and no other. An earlier pass used an ad-hoc policy
      written in the browser console with a slightly longer lookahead, scored
      64,606 on the same build, and set par 44% too high - a bot is a definition
      of "playing well", so a par measured against a bot nobody can re-run is a
-     number nobody can check. Re-measure whenever a station, a multiplier or the
-     obstacle mix changes; all three move it. */
-  par: 24000,
+     number nobody can check. Re-measure whenever a station, a multiplier, the
+     obstacle mix OR THE STARTING BATCH changes; all four move it, and the last
+     one moves it by a factor of four. */
+  par: 6800,
   gaugeTicks: 7,
   /* Full scale on the gauge, as a multiple of par. Three stars is 1.15x par, so
      the bar has to keep going well past that or a good run pegs it and a great
@@ -259,6 +278,19 @@ export const startCandles = (up: Upgrades) => T.startCandles + up.stack * 2;
 export const takeMul = (up: Upgrades) => Math.pow(0.88, up.grip);
 export const obstacleTake = (base: number, up: Upgrades) =>
   Math.max(1, Math.round(base * takeMul(up)));
+
+/* Never take more than half of what is there, and never less than one.
+
+   With a batch that starts at ONE, a barrier worth three candles is not an
+   obstacle, it is the end of the run before the player has touched anything.
+   The cap keeps an early hit painful and survivable and leaves a late hit at
+   its full flat cost, which is the number the player learns to read. */
+export const capTake = (take: number, count: number) =>
+  Math.max(1, Math.min(take, Math.floor(count / 2) || 1));
+
+/* How likely a chunk is to carry loose candles at this level. */
+export const looseChanceAt = (level: number) =>
+  Math.min(T.looseMax, T.looseBase + (level - 1) * T.loosePerLevel);
 
 export const earnMul = (up: Upgrades) => 1 + up.earn * 0.14;
 export const magnetR = (up: Upgrades) => T.magnetBase * (1 + up.reach * 0.26);

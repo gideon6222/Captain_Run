@@ -469,19 +469,18 @@ class Station {
          as paint, which is what this was. */
       const w = T.roadW / 2 - T.poolInset * 2;
       const tank = new THREE.Group();
-      const wall = new THREE.Mesh(box(w + 0.34, 0.40, T.poolLen + 0.34), toon(0xffffff));
-      wall.position.y = 0.18;
-      const liquid = new THREE.Mesh(box(w, 0.34, T.poolLen), new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.98, map: swirlTex(),
+      /* Deep enough that a candle goes THROUGH it rather than over it. A lying
+         candle is about 0.35 from the road to its top, so a wax surface at 0.24
+         left it riding on the wax like a boat; at 0.50 it is a tub the batch is
+         dragged through, and the part of a candle under the surface is hidden
+         by the wax, which is the read that says "it is being dipped". */
+      const wall = new THREE.Mesh(box(w + 0.34, 0.72, T.poolLen + 0.34), toon(0xffffff));
+      wall.position.y = 0.28;
+      const liquid = new THREE.Mesh(box(w, 0.52, T.poolLen), new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.94, map: swirlTex(),
       }));
       liquid.position.y = 0.24;
-      /* The ring where the pour lands. It is the one thing that says the ladle
-         above is actually connected to the wax below. */
-      const splash = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.10, 6, 14),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
-      splash.rotation.x = -Math.PI / 2;
-      splash.position.set(0, 0.42, -T.poolLen / 2 + 1.4);
-      tank.add(wall, liquid, splash);
+      tank.add(wall, liquid);
 
       /* The machine over it. A ladle that tips and pours, a glitter bottle
          that shakes, a ram that slams, a gift box, or ROTATE's arrow plate.
@@ -491,15 +490,32 @@ class Station {
       /* A big chrome ladle on a stick, and a THICK stream out of it. The
          reference's ladle is most of a lane wide and the pour is a rope of wax,
          not a trickle - at 0.42 and 0.13 this read as a lollipop. */
-      /* Chrome, not wax-coloured: the reference's ladle is a pale metal sphere
-         and only the stream out of it is the colour of what it is pouring. A
-         bowl painted the same colour as the pool below it reads as a ball
-         resting on the track. */
-      const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 9), toon(0xeef3f8));
-      const pour = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.30, 3.0, 10), new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.95,
+      /* A LADLE, not a ball on a stick.
+
+         A whole sphere with a cylinder hanging under its middle is what this
+         was, and it reads as a lollipop being waved: nothing about it says
+         "vessel", and a stream leaving the centre of a sphere is not pouring,
+         it is leaking. A ladle is an open bowl, a rim, a handle, and wax that
+         leaves over the LIP - so the bowl is a hemisphere, the wax inside it is
+         a disc you can see, and the stream starts at the rim on the low side
+         and is tilted with the tip. */
+      const bowl = new THREE.Mesh(
+        new THREE.SphereGeometry(0.66, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+        toon(0xeef3f8, { side: THREE.DoubleSide }));
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.07, 6, 18), toon(0xd6dfea));
+      rim.rotation.x = Math.PI / 2;
+      // the wax sitting in the bowl, visible over the rim
+      const inner = new THREE.Mesh(new THREE.CylinderGeometry(0.60, 0.42, 0.16, 14),
+        new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      inner.position.y = -0.12;
+      bowl.add(rim, inner);
+
+      /* The stream leaves the rim, not the middle, and it is a rope of wax. */
+      const pour = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.26, 2.6, 10), new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.96,
       }));
-      pour.position.y = -1.85;
+      pour.position.set(0.52, -1.35, 0);
+      pour.rotation.z = 0.16;
       const gift = new THREE.Mesh(box(1.5, 1.4, 1.5), toon(0xffd429));
       const giftBow = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.16, 6, 10), toon(0xff3d92));
       giftBow.position.y = 0.78; giftBow.rotation.x = Math.PI / 2;
@@ -529,7 +545,8 @@ class Station {
 
       g.add(arm, post, sign, tank, headG);
       this.group.add(g);
-      return { g, arm, post, sign, tank, wall, liquid, splash, headG, bowl, pour, gift, plate, dies };
+      return { g, arm, post, sign, tank, wall, liquid, headG,
+        bowl, rim, inner, pour, gift, plate, dies };
     });
 
     this.group.visible = false;
@@ -566,24 +583,22 @@ class Station {
          a carpet, which is what a full-width flat plane already looked like. */
       CTMP.setHex(col).multiplyScalar(0.62);
       p.wall.material = toon(CTMP.getHex());
-      p.liquid.scale.y = k.liquid ? 1 : 0.12;
+      p.liquid.scale.y = k.liquid ? 1 : 0.07;
       p.liquid.position.y = k.liquid ? 0.24 : 0.03;
+      p.wall.scale.y = k.liquid ? 1 : 0.12;
       const beat = t * 2.2 + i * 0.7 + st.z * 0.11;
-      p.splash.visible = k.liquid;
-      p.splash.material.color.setHex(col);
-      const sp = 1 + Math.sin(beat * 4.1) * 0.18;
-      p.splash.scale.set(sp, sp, 1);
-      /* Under the ladle, wherever it has gone. */
-      p.splash.position.set(p.headG.position.x, 0.42, p.headG.position.z);
 
-      p.bowl.visible = p.pour.visible = (k.machine === 'ladle' || k.machine === 'bottle');
+      p.bowl.visible = p.pour.visible =
+        (k.machine === 'ladle' || k.machine === 'bottle');
       p.gift.visible = k.machine === 'gift';
       if (k.machine !== 'ram') for (const d of p.dies) d.visible = false;
       p.plate.visible = k.machine === 'arrow';
       p.headG.visible = k.machine !== 'ram' || true;
 
       if (k.machine === 'ladle' || k.machine === 'bottle') {
-        p.bowl.material = toon(k.machine === 'bottle' ? col : 0xeef3f8);
+        p.bowl.material = toon(k.machine === 'bottle' ? col : 0xeef3f8,
+          { side: THREE.DoubleSide });
+        p.inner.material.color.setHex(col);
         p.pour.material.color.setHex(col);
         /* THE LADLE FOLLOWS THE CANDLES. It slides across its own half to sit
            over wherever the batch is, and rides down the pool with it, so the
@@ -595,11 +610,25 @@ class Station {
         p.headG.position.z = busy
           ? lerp(p.headG.position.z, (through - 0.5) * T.poolLen * 0.75, 0.12)
           : -T.poolLen / 2 + 1.4;
-        p.headG.position.y = 2.90 + Math.sin(beat) * 0.14;
-        /* Tipped further, so it reads as pouring rather than as hovering. */
-        p.headG.rotation.z = 0.30 + Math.sin(beat * 0.7) * 0.42;
-        p.pour.scale.y = 0.9 + Math.sin(beat * 3) * 0.16;
-        p.pour.scale.x = p.pour.scale.z = 1 + Math.sin(beat * 4.1) * 0.12;
+        p.headG.position.y = 2.55 + Math.sin(beat) * 0.08;
+        /* HELD, and tipped just enough to spill over the rim. The old motion
+           swung 0.42 radians back and forth about the whole group, which is
+           what made it look like a stick being waved: a ladle that is pouring
+           barely moves, and what moves is the wax. */
+        p.headG.rotation.z = 0.62 + Math.sin(beat * 1.3) * 0.07;
+        p.pour.scale.y = 1 + Math.sin(beat * 5) * 0.10;
+        p.pour.scale.x = p.pour.scale.z = 1 + Math.sin(beat * 6.3) * 0.10;
+        /* Fat drops leaving the lip and landing in the tub. The stream alone
+           reads as a solid rod; it is the drops that read as liquid. */
+        if (busy) {
+          const wx = side * (T.roadW / 4) + p.headG.position.x + 0.5;
+          const wz = st.z + p.headG.position.z;
+          if (Math.random() < 0.35) emit(wx, 2.0, wz, 2, col, 0.25, 1);
+          /* The ring where the stream lands, spread by the same pool that
+             answers a dip. A permanent torus sitting under the ladle cost a
+             draw call per half and never actually moved. */
+          if (Math.random() < 0.30) ripple(wx, wz, col, 0.7, 0.2);
+        }
       } else if (k.machine === 'ram') {
         p.bowl.visible = false; p.pour.visible = false;
         for (let d = 0; d < p.dies.length; d++) p.dies[d].visible = (d === h.mould);
@@ -805,17 +834,34 @@ function applyWorkshop(p) {
    Fixed because a wrap pool in chunk 4 would treat candles before there is
    anything worth wrapping, and offered twice because losing the biggest
    multiplier in the game to one mistimed swerve is out of proportion. */
+/* A LEVEL IS TWO SECTIONS, and ROTATE is the wall between them.
+
+   Before the wall the candles lie flat and the runway is wax: pools to weave
+   through, glitter, scent. At the wall they stand up - it spans the whole track
+   and there is no way past it, so it happens exactly once and always. After it
+   they are upright, one behind another, and the runway is the machines that can
+   only work on a standing candle: the press stamps them one at a time, the gift
+   station wraps them.
+
+   ROTATE used to be an ordinary half-station you could dodge, and could fire
+   twice in a level, which made it a power-up you might or might not collect and
+   left the press stamping candles lying on their sides. It is a section
+   boundary, not a pickup. */
+const ROTATE_CHUNK = 17;
 const STATION_SLOTS = [
+  // ── section one: lying down, and it is all wax ──
   { c: 4,  a: KIND_WAX,     b: KIND_WAX },
   { c: 8,  a: KIND_WAX,     b: KIND_GLITTER },
-  { c: 11, a: KIND_ROTATE,  b: KIND_WAX },
-  { c: 14, a: KIND_WAX,     b: KIND_WAX },
-  { c: 17, a: KIND_GLITTER, b: KIND_PRESS },
-  { c: 20, a: KIND_WAX,     b: KIND_SCENT },
+  { c: 11, a: KIND_WAX,     b: KIND_WAX },
+  { c: 14, a: KIND_WAX,     b: KIND_SCENT },
+  // ── the wall ──
+  { c: ROTATE_CHUNK, a: KIND_ROTATE, b: KIND_ROTATE, wall: true },
+  // ── section two: standing up, and the machines that need it ──
+  { c: 20, a: KIND_PRESS,   b: KIND_GLITTER },
   { c: 23, a: KIND_WAX,     b: KIND_WAX },
-  { c: 26, a: KIND_PRESS,   b: KIND_ROTATE },
-  { c: 29, a: KIND_WRAP,    b: KIND_GLITTER },
-  { c: 32, a: KIND_WAX,     b: KIND_WRAP },
+  { c: 26, a: KIND_PRESS,   b: KIND_WRAP },
+  { c: 29, a: KIND_WAX,     b: KIND_GLITTER },
+  { c: 32, a: KIND_WRAP,    b: KIND_WRAP },
 ];
 const slotFor = (c) => STATION_SLOTS.find((x) => x.c === c) || null;
 
@@ -850,7 +896,7 @@ function spawnStation(c, z) {
   let right = makeHalf(slot.b, c, 340, slot.a === KIND_WAX ? left.wax : -1);
   /* The better-looking side is not always the same side. */
   if (hash(c, 455 + S.level) > 0.5) { const t = left; left = right; right = t; }
-  stations.push({ z, left, right, touched: false });
+  stations.push({ z, left, right, touched: false, wall: !!slot.wall });
 }
 
 function spawnChunk(c) {
@@ -931,8 +977,11 @@ function spawnChunk(c) {
   /* Loose candles lying on the runway. This is how the tray grows - straight
      off the reference screenshot, which has finished candles scattered across
      the track. */
-  if (r5 < T.looseChance) {
-    const n = 2 + Math.floor(hash(c, 940) * 4);
+  if (r5 < TU.looseChanceAt(S.level)) {
+    /* One or two early, more as the levels go on. A pile of six on chunk two
+       when the batch starts at one hands the player the whole run in the first
+       three seconds. */
+    const n = 1 + Math.floor(hash(c, 940) * 1.7) + Math.floor(S.level / 3);
     const lx = TU.laneX(hash(c, 945 + S.level));
     const sweep = (hash(c, 950) - 0.5) * 3.0;
     for (let i = 0; i < n; i++) {
@@ -1011,7 +1060,7 @@ function writeRipples() {
     const k = p.t / p.life;
     const r = p.r0 + k * 1.5;
     QT2.setFromAxisAngle(V.set(1, 0, 0), -Math.PI / 2);
-    M2.compose(V2.set(p.x, 0.44, p.z), QT2, V.set(r, r, 1 - k * 0.6));
+    M2.compose(V2.set(p.x, 0.52, p.z), QT2, V.set(r, r, 1 - k * 0.6));
     W.ripple.push(M2, CTMP.setHex(p.col).lerp(WHITE, 0.45 + k * 0.4));
   }
 }
@@ -1631,24 +1680,23 @@ function updatePools(n) {
 
     const z0 = st.z - T.poolLen / 2, z1 = st.z + T.poolLen / 2;
 
-    /* ROTATE is not a pool: it turns the whole loaf, once, as the leader
-       crosses the plate. Handled here rather than in `apply` because it acts
-       on the tray and not on a candle. */
-    for (const h of [st.left, st.right]) {
+    /* THE WALL. It spans the whole track, so crossing it is not a choice: the
+       batch stands up here and only here, once per level. Handled outside
+       `apply` because it acts on the whole batch rather than on a candle. */
+    for (const h of [st.left]) {
       if (h.kind !== KIND_ROTATE || h.done) continue;
-      const onIt = Math.abs(run.z - st.z) < 1.2 &&
-        ((h === st.left && run.x < 0) || (h === st.right && run.x >= 0));
+      const onIt = Math.abs(run.z - st.z) < 1.2;
       if (!onIt) continue;
       h.done = true;
+      st.right.done = true;
       /* IT STANDS THE BATCH UP. That is what the name means and what the
          reference does with it - flat slab at 15.5s in the walkthrough, tower
          at 15.8s, with the plate still behind it. It used to turn the tray end
          for end here, which is a thing the player cannot see happening and the
          single biggest reason the stations read as power-ups rather than as
          machinery. */
-      run.standing = !run.standing;
-      if (!run.standing) TR.rotate(run.tray);
-      popAt(run.standing ? 'STAND UP' : 'LAY DOWN', '#ffffff', st.z);
+      run.standing = true;
+      popAt('STAND UP', '#ffffff', st.z);
       emit(run.x, 0.8, st.z, 26, 0xffffff, 2.4, 6);
       sfx.press(); shake(0.5); flash(0.2);
     }
@@ -1716,7 +1764,7 @@ function updateObstacles(dt, n) {
     o.hit = true;
     const base = o.kind === 'roller' ? T.rollerTake
       : o.kind === 'sweeper' ? T.sweeperTake : T.barrierTake;
-    const lost = TR.shrink(run.tray, takeOf(base));
+    const lost = TR.shrink(run.tray, TU.capTake(takeOf(base), count()));
     run.lost += lost;
     if (lost > 0) {
       pop('-' + lost, '#ff6b78', o.x, 2.2, o.z);
@@ -2019,6 +2067,12 @@ function writeWorld() {
       W.rail.push(M2);
     }
   }
+
+  /* The shop fronts are twelve plain meshes and they matter for the last four
+     seconds of a run. Frustum culling does not save them - they sit dead ahead
+     down a narrow lane - so they are switched off explicitly, which is twelve
+     draw calls back across the whole middle of a level, where the peak is. */
+  shopArea.visible = BENCH_Z - run.z < 90;
 
   buildSkyline();
   for (const t of towers) {

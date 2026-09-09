@@ -69,6 +69,34 @@ npm run size       # bundle size guard, fails in both directions
 | `REFERENCE.md` | **What the real game actually does**, observed from its screenshots and a gameplay video |
 | `NOTES.md` | Design decisions, tuning as shipped, and what to do next |
 
+## A LEVEL IS TWO SECTIONS, and the ROTATE wall divides them
+
+Before the wall the candles lie flat and the runway is wax: pools to weave, glitter, scent.
+The wall spans the whole track at `ROTATE_CHUNK`, so crossing it is not a choice and it fires
+exactly once. After it the candles stand in a row, and the runway is the machines that can
+only work on a standing candle — the press stamps them one at a time, the gift station wraps
+them.
+
+ROTATE used to be an ordinary half-station you could dodge, and could fire twice in a level.
+That made it a power-up you might or might not collect, and left the press stamping candles
+lying on their sides. **It is a section boundary, not a pickup.**
+
+## The batch starts at ONE
+
+`startCandles: 1`. Thirty candles is somewhere you get to, not somewhere you start: loose
+candles are scarce early (`looseChanceAt` rises with the level) and the first one on the
+runway is the most valuable thing the player has ever seen.
+
+Two things follow, and both are load-bearing:
+
+- **`capTake` — an obstacle never takes more than half the batch, and never less than one.**
+  With a batch of one, a barrier worth three candles is not an obstacle, it is the end of the
+  run before the player has touched anything.
+- **Dodging alone is now worth nothing**, measured: a bot that only avoids hazards scores what
+  a bot that does nothing scores, because the candles it saved are ones it never picked up.
+  The early game is about collecting; obstacles matter once there is a batch worth losing.
+  That is left as measured rather than massaged.
+
 ## The player object has TWO FORMS, and ROTATE changes it
 
 Lying down it is a slab of candles along the track. **ROTATE stands them up** — every candle
@@ -288,8 +316,12 @@ weaving is worth **9.4× per candle** over never steering.
 - **Candles are ~4:1 tall and the camera is low.** The bands are horizontal, so they are only
   legible from the side; a high camera sees the tops and a three-colour tray reads as one
   colour.
-- **Draw calls 28–92**, measured across a whole level with every upgrade at 3 (which is the
-  worst case: every station kind active), peaking with the batch standing. Everything on the runway is instanced; the
+- **Draw calls 44–89**, measured across a whole level with every upgrade at 3 (which is the
+  worst case: every station kind active), peaking with the batch standing. The ladle's bowl,
+  rim and inner wax took the peak to 105; it came back under by **switching the shop fronts
+  off explicitly** (`shopArea.visible = BENCH_Z - run.z < 90`). Frustum culling does not save
+  them — they sit dead ahead down a narrow lane — and they matter for the last four seconds
+  of a run. Everything on the runway is instanced; the
   *stations* are the cost, at three pooled gantries of about twelve visible meshes each, and
   the three shop fronts past the finish line add twelve more when they come into frustum.
   The e2e budget is 100, which is the mobile guideline this stack works to, so the headroom

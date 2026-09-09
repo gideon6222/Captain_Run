@@ -8,9 +8,19 @@
    Rules for entries: describe what the player can now do or see, not what was
    refactored; one line each; newest first. */
 
-export const VERSION = '6.1.0';
+export const VERSION = '7.0.0';
 
 export const CHANGELOG = [
+  {
+    version: '7.0.0', date: '2026-09-08', title: 'Two sections, and one candle',
+    notes: [
+      'You start with ONE candle. A batch is something you build now \u2014 loose candles are scarce on the early levels and get more plentiful as you go.',
+      'An obstacle can never take more than half of what you have, so a bad hit early costs you but does not end the run.',
+      'A level is two sections. Before the ROTATE wall the candles lie flat and the runway is wax; the wall spans the whole track so you always cross it; after it they stand in a row and the press stamps them one at a time.',
+      'Real ladles: an open bowl with a rim and wax you can see inside it, tipped so the stream leaves the lip, with drops falling into the tub.',
+      'The wax tubs are deep enough to drag the candles through rather than over.'
+    ]
+  },
   {
     version: '6.1.0', date: '2026-09-08', title: 'Standing in a row',
     notes: [
