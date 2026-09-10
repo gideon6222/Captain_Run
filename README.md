@@ -1,4 +1,8 @@
-# Candle Gift
+# Candle Gift (web) - retired
+
+> **Candle Gift moved to https://github.com/gideon6222/candle-gift on 2026-09-09**, rebuilt in
+> Godot 4.7 as a native Android game. This repo holds the web version, which still builds,
+> still passes its tests and is still live at the link below. It is not being developed.
 
 Run a tray of candles down the line. Dip them in coloured wax, sprinkle glitter, press a
 shape, tie a bow, dodge the barriers and saws — then sell the lot at the gift table.

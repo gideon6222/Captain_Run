@@ -1,4 +1,18 @@
-# Candle Gift
+# Candle Gift (web) - RETIRED 2026-09-09
+
+> **This repo is superseded. Candle Gift is now `C:\dev\candle-gift`**, repo
+> `gideon6222/candle-gift`, rewritten in Godot 4.7 as a native Android game. That rewrite was
+> asked for deliberately: this build had started life as a viking crowd-runner and kept
+> inheriting its shape through seven versions.
+>
+> Nothing came across from here except `REFERENCE.md`, and the copy in `C:\dev\candle-gift` is
+> the maintained one. **Do not build here, do not deploy, do not copy code out.** Every change
+> to Candle Gift belongs in `C:\dev\candle-gift`.
+>
+> It is kept because it still works. 74 unit tests pass as of retirement and
+> https://gideon6222.github.io/Captain_Run/ still answers. Read it for what the web versions
+> did and what the reference research found. The rest of this file describes that build, in
+> the present tense, as it was on the day it stopped.
 
 A candle-factory runner. Steer one long slab of candles — lying flat along the track, gold
 tips down one edge — through pools of wax lying in the runway, weaving so different parts of
@@ -25,9 +39,12 @@ Target: Samsung S26 Ultra, Chrome, portrait, installed to the home screen.
 > the build depends on the name (`base: './'`), so renaming it on GitHub is safe whenever
 > Gideon wants. Until then, `Captain_Run` in a path or URL means Candle Gift.
 
-**Read `C:\dev\gamedev-notes` first** — `SKILL.md` (process), `PIPELINE.md` (stack, shipping,
-measured limits), `CRAFT.md` (design lessons, several drawn from this repo), `ASSETS.md`,
-`PLAYTESTS.md`.
+**Read `C:\dev\gamedev-notes` first** - `INDEX.md` (process and standing rules), then
+`WEB.md` (the web stack, shipping, measured limits), `CRAFT.md` (design lessons, several
+drawn from this repo), `ASSETS.md`, and `playtests/captain-run.md` plus
+`playtests/candle-gift.md` for his words. The notes were reorganised on 2026-09-09: the
+files this line used to name, `SKILL.md`, `PIPELINE.md` and `PLAYTESTS.md`, are now in
+`gamedev-notes/archive/`.
 
 ---
 
